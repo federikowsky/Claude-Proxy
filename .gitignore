@@ -1,0 +1,56 @@
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Hatch / setuptools / wheels
+dist/
+build/
+*.egg-info/
+.eggs/
+*.egg
+pip-wheel-metadata/
+
+# Testing & coverage
+.pytest_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+.cache
+
+# Type checkers & linters
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+dmypy.json
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local proxy config (use config/claude-proxy.example.yaml as template)
+config/claude-proxy.yaml
+
+# Editors / OS
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter (if used later)
+.ipynb_checkpoints/
+
+DECISIONS.md
+TASKS.md
