@@ -265,9 +265,7 @@ class OpenRouterProvider:
 
     def _messages_url(self) -> str:
         base_url = self._settings.base_url.rstrip("/")
-        if base_url.endswith("/anthropic/v1"):
-            return f"{base_url}/messages"
-        return f"{base_url}/anthropic/v1/messages"
+        return f"{base_url}/messages"
 
     def _headers(self) -> dict[str, str]:
         headers = {

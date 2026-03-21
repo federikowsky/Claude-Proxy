@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from unittest.mock import MagicMock
 
 import pytest
+from pydantic import SecretStr
 
 from claude_proxy.domain.enums import ReasoningMode, Role
 from claude_proxy.domain.models import ChatMessage, ChatRequest, ModelInfo, RawReasoningDelta, RawTextDelta
+from claude_proxy.infrastructure.config import ProviderSettings
 from claude_proxy.infrastructure.providers.openrouter import (
     IncrementalSseParser,
     OpenRouterEventMapper,
+    OpenRouterProvider,
     OpenRouterTranslator,
     SseMessage,
 )
@@ -38,6 +42,26 @@ def _model() -> ModelInfo:
         supports_multimodal=False,
         reasoning_mode=ReasoningMode.DROP,
     )
+
+
+def test_openrouter_messages_url_appends_messages_segment() -> None:
+    settings = ProviderSettings(
+        base_url="https://openrouter.ai/api/v1",
+        api_key_env="OPENROUTER_API_KEY",
+        api_key=SecretStr("test-key"),
+        connect_timeout_seconds=1,
+        read_timeout_seconds=1,
+        write_timeout_seconds=1,
+        pool_timeout_seconds=1,
+        max_connections=1,
+        max_keepalive_connections=1,
+    )
+    provider = OpenRouterProvider(settings=settings, client_manager=MagicMock())
+    assert provider._messages_url() == "https://openrouter.ai/api/v1/messages"
+
+    settings_trailing = settings.model_copy(update={"base_url": "https://openrouter.ai/api/v1/"})
+    provider_trailing = OpenRouterProvider(settings=settings_trailing, client_manager=MagicMock())
+    assert provider_trailing._messages_url() == "https://openrouter.ai/api/v1/messages"
 
 
 def test_translator_maps_domain_request_to_openrouter_payload() -> None:
