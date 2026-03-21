@@ -33,6 +33,7 @@ def base_config() -> dict[str, Any]:
             "port": 8082,
             "log_level": "info",
             "request_timeout_seconds": 120,
+            "debug": False,
         },
         "routing": {
             "default_model": "openai/gpt-4.1-mini",

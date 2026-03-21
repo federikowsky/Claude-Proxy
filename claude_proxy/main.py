@@ -38,6 +38,7 @@ def create_app(
         normalizer=normalizer,
         encoder=encoder,
         stream_policy=resolved_settings.stream.policy,
+        debug=resolved_settings.server.debug,
     )
 
     @asynccontextmanager

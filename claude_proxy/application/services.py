@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator, Mapping
 
 from claude_proxy.domain.enums import ReasoningMode, StreamPolicyName
 from claude_proxy.domain.errors import RoutingError
 from claude_proxy.domain.models import ChatRequest
 from claude_proxy.domain.ports import ModelProvider, ModelResolver, SseEncoder, StreamNormalizer
+
+_logger = logging.getLogger("claude_proxy.stream")
 
 
 class MessageService:
@@ -17,15 +20,26 @@ class MessageService:
         normalizer: StreamNormalizer,
         encoder: SseEncoder,
         stream_policy: StreamPolicyName,
+        debug: bool = False,
     ) -> None:
         self._resolver = resolver
         self._providers = providers
         self._normalizer = normalizer
         self._encoder = encoder
         self._stream_policy = stream_policy
+        self._debug = debug
 
     async def stream(self, request: ChatRequest) -> AsyncIterator[bytes]:
         model = self._resolver.resolve(request.model)
+        if self._debug:
+            _logger.info(
+                "stream_start model=%s provider=%s messages=%d max_tokens=%d system=%s",
+                model.name,
+                model.provider,
+                len(request.messages),
+                request.max_tokens,
+                request.system is not None,
+            )
         provider = self._providers.get(model.provider)
         if provider is None:
             raise RoutingError(f"provider '{model.provider}' is not configured")

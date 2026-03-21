@@ -22,6 +22,7 @@ class ServerSettings(BaseModel):
     port: int = Field(default=8082, ge=1, le=65535)
     log_level: str = "info"
     request_timeout_seconds: float = Field(default=120, gt=0)
+    debug: bool = False
 
 
 class RoutingSettings(BaseModel):
