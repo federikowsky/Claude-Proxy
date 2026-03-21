@@ -14,4 +14,3 @@ async def test_http_client_manager_reuses_single_client(settings) -> None:
         assert client_a is client_b
     finally:
         await manager.close()
-

@@ -4,59 +4,63 @@ import pytest
 from pydantic import ValidationError
 
 from claude_proxy.api.schemas import AnthropicMessagesRequest
-from claude_proxy.domain.enums import Role
+from claude_proxy.domain.models import TextBlock, ToolResultBlock
 
 
-def test_request_schema_supports_text_blocks() -> None:
+def test_request_schema_preserves_structured_blocks_tools_and_thinking() -> None:
     payload = AnthropicMessagesRequest.model_validate(
         {
-            "model": "openai/gpt-4.1-mini",
+            "model": "anthropic/claude-sonnet-4",
             "messages": [
+                {"role": "user", "content": "Run diagnostics"},
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Hello"},
-                        {"type": "text", "text": " world"},
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_1",
+                            "content": [{"type": "text", "text": "done"}],
+                        },
                     ],
                 },
             ],
-            "system": [{"type": "text", "text": "You are concise."}],
-            "max_tokens": 32,
-            "stream": True,
+            "system": [{"type": "text", "text": "You are a bridge."}],
+            "metadata": {"session_id": "abc"},
+            "temperature": 0.2,
+            "top_p": 0.9,
+            "max_tokens": 256,
+            "stop_sequences": ["</done>"],
+            "stream": False,
+            "tools": [
+                {
+                    "name": "bash",
+                    "description": "Run shell commands",
+                    "input_schema": {"type": "object"},
+                },
+            ],
+            "tool_choice": {"type": "auto"},
+            "thinking": {"type": "enabled", "budget_tokens": 128},
+            "context_management": {"workspace": "repo"},
         },
     )
 
-    domain = payload.to_domain()
-    assert domain.messages[0].role is Role.USER
-    assert domain.messages[0].text == "Hello world"
-    assert domain.system == "You are concise."
+    request = payload.to_domain()
+    assert request.stream is False
+    assert request.system == (TextBlock(text="You are a bridge."),)
+    assert isinstance(request.messages[1].content[0], ToolResultBlock)
+    assert request.tools[0].name == "bash"
+    assert request.tool_choice is not None and request.tool_choice.type == "auto"
+    assert request.thinking is not None and request.thinking.budget_tokens == 128
+    assert request.extensions["context_management"] == {"workspace": "repo"}
 
 
-def test_request_schema_rejects_non_stream_requests() -> None:
+def test_request_schema_rejects_invalid_content_block_shape() -> None:
     with pytest.raises(ValidationError):
         AnthropicMessagesRequest.model_validate(
             {
-                "model": "openai/gpt-4.1-mini",
-                "messages": [{"role": "user", "content": "Hello"}],
-                "max_tokens": 32,
-                "stream": False,
-            },
-        )
-
-
-def test_request_schema_rejects_non_text_content() -> None:
-    with pytest.raises(ValidationError):
-        AnthropicMessagesRequest.model_validate(
-            {
-                "model": "openai/gpt-4.1-mini",
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [{"type": "image", "source": {"type": "base64"}}],
-                    },
-                ],
+                "model": "anthropic/claude-sonnet-4",
+                "messages": [{"role": "user", "content": [{"text": "missing type"}]}],
                 "max_tokens": 32,
                 "stream": True,
             },
         )
-

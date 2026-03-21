@@ -1,18 +1,26 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from unittest.mock import MagicMock
 
 import pytest
-from pydantic import SecretStr
 
-from claude_proxy.domain.enums import ReasoningMode, Role
-from claude_proxy.domain.models import ChatMessage, ChatRequest, ModelInfo, RawReasoningDelta, RawTextDelta
-from claude_proxy.infrastructure.config import ProviderSettings
+from claude_proxy.domain.enums import Role
+from claude_proxy.domain.models import (
+    ChatRequest,
+    ContentBlockDeltaEvent,
+    ContentBlockStartEvent,
+    InputJsonDelta,
+    Message,
+    MessageStartEvent,
+    ModelInfo,
+    ThinkingBlock,
+    ThinkingDelta,
+    ToolDefinition,
+    ToolUseBlock,
+)
 from claude_proxy.infrastructure.providers.openrouter import (
     IncrementalSseParser,
-    OpenRouterEventMapper,
-    OpenRouterProvider,
+    OpenRouterStreamNormalizer,
     OpenRouterTranslator,
     SseMessage,
 )
@@ -21,108 +29,97 @@ from tests.conftest import chunk_bytes, collect_list
 
 def _request() -> ChatRequest:
     return ChatRequest(
-        model="openai/gpt-4.1-mini",
-        messages=(ChatMessage(role=Role.USER, text="Hello"),),
-        system="Be concise.",
-        max_tokens=64,
-        temperature=0.1,
-        stream=True,
+        model="anthropic/claude-sonnet-4",
+        messages=(
+            Message(
+                role=Role.USER,
+                content=(ToolUseBlock(id="toolu_prev", name="bash", input={"cmd": "pwd"}),),
+            ),
+        ),
+        system=(),
         metadata={"trace_id": "abc"},
+        temperature=0.1,
+        top_p=0.8,
+        max_tokens=64,
+        stop_sequences=("DONE",),
+        tools=(ToolDefinition(name="bash", description="Run shell", input_schema={"type": "object"}),),
+        tool_choice=None,
+        thinking=None,
+        stream=True,
+        extensions={"context_management": {"cwd": "."}},
     )
 
 
 def _model() -> ModelInfo:
     return ModelInfo(
-        name="openai/gpt-4.1-mini",
+        name="anthropic/claude-sonnet-4",
         provider="openrouter",
         enabled=True,
-        supports_streaming=True,
-        supports_text=True,
-        supports_tools=False,
-        supports_multimodal=False,
-        reasoning_mode=ReasoningMode.DROP,
+        supports_stream=True,
+        supports_nonstream=True,
+        supports_tools=True,
+        supports_thinking=True,
+        provider_quirks={},
     )
 
 
-def test_openrouter_messages_url_appends_messages_segment() -> None:
-    settings = ProviderSettings(
-        base_url="https://openrouter.ai/api/v1",
-        api_key_env="OPENROUTER_API_KEY",
-        api_key=SecretStr("test-key"),
-        connect_timeout_seconds=1,
-        read_timeout_seconds=1,
-        write_timeout_seconds=1,
-        pool_timeout_seconds=1,
-        max_connections=1,
-        max_keepalive_connections=1,
-    )
-    provider = OpenRouterProvider(settings=settings, client_manager=MagicMock())
-    assert provider._messages_url() == "https://openrouter.ai/api/v1/messages"
-
-    settings_trailing = settings.model_copy(update={"base_url": "https://openrouter.ai/api/v1/"})
-    provider_trailing = OpenRouterProvider(settings=settings_trailing, client_manager=MagicMock())
-    assert provider_trailing._messages_url() == "https://openrouter.ai/api/v1/messages"
-
-
-def test_translator_maps_domain_request_to_openrouter_payload() -> None:
-    payload = OpenRouterTranslator().to_payload(_request(), _model())
-    assert payload == {
-        "model": "openai/gpt-4.1-mini",
-        "messages": [{"role": "user", "content": "Hello"}],
-        "system": "Be concise.",
-        "max_tokens": 64,
-        "temperature": 0.1,
-        "stream": True,
-        "metadata": {"trace_id": "abc"},
-    }
+def test_translator_maps_full_request_payload() -> None:
+    translator = OpenRouterTranslator(passthrough_request_fields=("context_management",))
+    payload = translator.to_payload(_request(), _model())
+    assert payload["model"] == "anthropic/claude-sonnet-4"
+    assert payload["messages"][0]["content"][0]["type"] == "tool_use"
+    assert payload["tools"][0]["name"] == "bash"
+    assert payload["metadata"] == {"trace_id": "abc"}
+    assert payload["context_management"] == {"cwd": "."}
 
 
 async def _chunks(data: bytes) -> AsyncIterator[bytes]:
-    for chunk in chunk_bytes(data, 9):
+    for chunk in chunk_bytes(data, 11):
         yield chunk
 
 
 @pytest.mark.asyncio
-async def test_incremental_sse_parser_handles_fragmented_events() -> None:
-    payload = (
+async def test_incremental_parser_and_normalizer_support_tool_streaming() -> None:
+    upstream = (
         b"event: message_start\n"
-        b'data: {"type":"message_start"}\n\n'
+        b'data: {"type":"message_start","message":{"id":"msg_1","role":"assistant","model":"anthropic/claude-sonnet-4","usage":{"input_tokens":4}}}\n\n'
+        b"event: content_block_start\n"
+        b'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"bash","input":{}}}\n\n'
+        b"event: content_block_delta\n"
+        b'data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"cmd\\":\\"ls\\"}"}}\n\n'
+        b"event: content_block_stop\n"
+        b'data: {"type":"content_block_stop","index":0}\n\n'
         b"event: message_stop\n"
         b'data: {"type":"message_stop"}\n\n'
     )
     parser = IncrementalSseParser()
-    messages = await collect_list(parser.parse(_chunks(payload)))
+    normalizer = OpenRouterStreamNormalizer()
+    events = []
+    async for message in parser.parse(_chunks(upstream)):
+        event = normalizer.normalize(message)
+        if event is not None:
+            events.append(event)
 
-    assert messages == [
-        SseMessage(event="message_start", data='{"type":"message_start"}'),
-        SseMessage(event="message_stop", data='{"type":"message_stop"}'),
-    ]
+    assert isinstance(events[0], MessageStartEvent)
+    assert isinstance(events[1], ContentBlockStartEvent)
+    assert isinstance(events[1].block, ToolUseBlock)
+    assert isinstance(events[2], ContentBlockDeltaEvent)
+    assert isinstance(events[2].delta, InputJsonDelta)
 
 
-def test_event_mapper_classifies_text_and_reasoning() -> None:
-    mapper = OpenRouterEventMapper()
-    assert mapper.map_message(
+def test_stream_normalizer_maps_reasoning_to_thinking() -> None:
+    normalizer = OpenRouterStreamNormalizer()
+    normalizer.normalize(
         SseMessage(
             event="content_block_start",
-            data='{"type":"content_block_start","index":0,"content_block":{"type":"thinking"}}',
+            data='{"type":"content_block_start","index":0,"content_block":{"type":"reasoning","reasoning":""}}',
         ),
-    ) is None
-    assert mapper.map_message(
+    )
+    event = normalizer.normalize(
         SseMessage(
             event="content_block_delta",
-            data='{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","text":"hidden"}}',
+            data='{"type":"content_block_delta","index":0,"delta":{"type":"reasoning_delta","text":"chain"}}',
         ),
-    ) == RawReasoningDelta(text="hidden")
-    assert mapper.map_message(
-        SseMessage(
-            event="content_block_start",
-            data='{"type":"content_block_start","index":1,"content_block":{"type":"text"}}',
-        ),
-    ) is None
-    assert mapper.map_message(
-        SseMessage(
-            event="content_block_delta",
-            data='{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"visible"}}',
-        ),
-    ) == RawTextDelta(text="visible")
-
+    )
+    assert isinstance(event, ContentBlockDeltaEvent)
+    assert isinstance(event.delta, ThinkingDelta)

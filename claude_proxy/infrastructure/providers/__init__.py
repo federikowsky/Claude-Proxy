@@ -6,7 +6,7 @@ from claude_proxy.domain.errors import RoutingError
 from claude_proxy.domain.ports import ModelProvider
 from claude_proxy.infrastructure.config import Settings
 from claude_proxy.infrastructure.http import SharedAsyncClientManager
-from claude_proxy.infrastructure.providers.openrouter import OpenRouterProvider
+from claude_proxy.infrastructure.providers.openrouter import OpenRouterProvider, OpenRouterTranslator
 
 
 def build_provider_registry(
@@ -17,6 +17,9 @@ def build_provider_registry(
         "openrouter": lambda provider_settings: OpenRouterProvider(
             settings=provider_settings,
             client_manager=client_manager,
+            translator=OpenRouterTranslator(
+                passthrough_request_fields=settings.bridge.passthrough_request_fields,
+            ),
         ),
     }
     providers: dict[str, ModelProvider] = {}

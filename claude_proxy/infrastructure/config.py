@@ -7,7 +7,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
-from claude_proxy.domain.enums import ReasoningMode, StreamPolicyName
+from claude_proxy.domain.enums import CompatibilityMode
 from claude_proxy.domain.errors import InternalBridgeError
 from claude_proxy.jsonutil import json_loads
 
@@ -32,12 +32,12 @@ class RoutingSettings(BaseModel):
     fallback_model: str | None = None
 
 
-class StreamSettings(BaseModel):
+class BridgeSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    policy: StreamPolicyName = StreamPolicyName.STRICT
+    compatibility_mode: CompatibilityMode = CompatibilityMode.TRANSPARENT
     emit_usage: bool = True
-    max_reasoning_buffer_chars: int = Field(default=32768, gt=0)
+    passthrough_request_fields: tuple[str, ...] = ()
 
 
 class ProviderSettings(BaseModel):
@@ -63,11 +63,11 @@ class ModelSettings(BaseModel):
 
     provider: str
     enabled: bool = True
-    supports_streaming: bool = True
-    supports_text: bool = True
-    supports_tools: bool = False
-    supports_multimodal: bool = False
-    reasoning_mode: ReasoningMode = ReasoningMode.DROP
+    supports_stream: bool = True
+    supports_nonstream: bool = True
+    supports_tools: bool = True
+    supports_thinking: bool = True
+    provider_quirks: dict[str, Any] = Field(default_factory=dict)
 
 
 class Settings(BaseModel):
@@ -75,7 +75,7 @@ class Settings(BaseModel):
 
     server: ServerSettings
     routing: RoutingSettings
-    stream: StreamSettings
+    bridge: BridgeSettings
     providers: dict[str, ProviderSettings]
     models: dict[str, ModelSettings]
 
@@ -85,7 +85,6 @@ class Settings(BaseModel):
             raise ValueError("routing.default_model must reference a configured model")
         if self.routing.fallback_model and self.routing.fallback_model not in self.models:
             raise ValueError("routing.fallback_model must reference a configured model")
-
         for model_name, model in self.models.items():
             if model.provider not in self.providers:
                 raise ValueError(f"model '{model_name}' references unknown provider '{model.provider}'")
@@ -98,10 +97,8 @@ def load_settings(path: str | Path | None = None) -> Settings:
     config_path = Path(path or os.getenv("CLAUDE_PROXY_CONFIG", DEFAULT_CONFIG_PATH))
     if not config_path.exists():
         raise InternalBridgeError(f"config file not found: {config_path}")
-
     with config_path.open("r", encoding="utf-8") as handle:
         raw = yaml.safe_load(handle) or {}
-
     if not isinstance(raw, dict):
         raise InternalBridgeError("config root must be a mapping")
 
@@ -123,7 +120,7 @@ def load_settings(path: str | Path | None = None) -> Settings:
 
     try:
         return Settings.model_validate(raw)
-    except Exception as exc:  # pragma: no cover - exact pydantic message not important
+    except Exception as exc:  # pragma: no cover
         raise InternalBridgeError(f"invalid configuration: {exc}") from exc
 
 
@@ -133,9 +130,8 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
         if not env_name.startswith(ENV_PREFIX):
             continue
         path = [part.lower() for part in env_name[len(ENV_PREFIX) :].split("__") if part]
-        if not path:
-            continue
-        _set_nested(merged, path, _parse_env_value(raw_value))
+        if path:
+            _set_nested(merged, path, _parse_env_value(raw_value))
     return merged
 
 
@@ -179,4 +175,3 @@ def _parse_env_value(raw: str) -> Any:
         return float(raw)
     except ValueError:
         return raw
-

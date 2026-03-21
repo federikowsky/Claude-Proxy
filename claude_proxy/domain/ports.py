@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Protocol
 
-from claude_proxy.domain.enums import StreamPolicyName
-from claude_proxy.domain.models import ChatRequest, DomainEvent, ModelInfo, ProviderEvent
+from claude_proxy.domain.enums import CompatibilityMode
+from claude_proxy.domain.models import CanonicalEvent, ChatRequest, ChatResponse, ModelInfo
 
 
 class ModelProvider(Protocol):
@@ -12,23 +12,40 @@ class ModelProvider(Protocol):
         self,
         request: ChatRequest,
         model: ModelInfo,
-    ) -> AsyncIterator[ProviderEvent]: ...
+    ) -> AsyncIterator[CanonicalEvent]: ...
+
+    async def complete(
+        self,
+        request: ChatRequest,
+        model: ModelInfo,
+    ) -> ChatResponse: ...
 
 
 class ModelResolver(Protocol):
     def resolve(self, requested_model: str | None) -> ModelInfo: ...
 
 
-class StreamNormalizer(Protocol):
-    async def normalize(
+class ResponseNormalizer(Protocol):
+    async def normalize_stream(
         self,
         request: ChatRequest,
         model: ModelInfo,
-        events: AsyncIterator[ProviderEvent],
-        policy: StreamPolicyName,
-    ) -> AsyncIterator[DomainEvent]: ...
+        events: AsyncIterator[CanonicalEvent],
+        mode: CompatibilityMode,
+    ) -> AsyncIterator[CanonicalEvent]: ...
+
+    def normalize_response(
+        self,
+        request: ChatRequest,
+        model: ModelInfo,
+        response: ChatResponse,
+        mode: CompatibilityMode,
+    ) -> ChatResponse: ...
 
 
 class SseEncoder(Protocol):
-    async def encode(self, events: AsyncIterator[DomainEvent]) -> AsyncIterator[bytes]: ...
+    async def encode(self, events: AsyncIterator[CanonicalEvent]) -> AsyncIterator[bytes]: ...
 
+
+class ResponseEncoder(Protocol):
+    def encode(self, response: ChatResponse) -> dict[str, object]: ...

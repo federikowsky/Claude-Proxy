@@ -16,19 +16,13 @@ class StaticModelResolver:
             raise RoutingError(f"model '{model_name}' is not configured")
         if not config.enabled:
             raise RoutingError(f"model '{model_name}' is disabled")
-        if not config.supports_streaming:
-            raise RoutingError(f"model '{model_name}' does not support streaming")
-        if not config.supports_text:
-            raise RoutingError(f"model '{model_name}' does not support text input")
-
         return ModelInfo(
             name=model_name,
             provider=config.provider,
             enabled=config.enabled,
-            supports_streaming=config.supports_streaming,
-            supports_text=config.supports_text,
+            supports_stream=config.supports_stream,
+            supports_nonstream=config.supports_nonstream,
             supports_tools=config.supports_tools,
-            supports_multimodal=config.supports_multimodal,
-            reasoning_mode=config.reasoning_mode,
+            supports_thinking=config.supports_thinking,
+            provider_quirks=config.provider_quirks,
         )
-

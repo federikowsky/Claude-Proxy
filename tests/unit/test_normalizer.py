@@ -4,34 +4,40 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from claude_proxy.application.policies import AnthropicSafeStreamNormalizer
-from claude_proxy.domain.enums import ReasoningMode, StreamPolicyName
+from claude_proxy.application.policies import CompatibilityNormalizer
+from claude_proxy.domain.enums import CompatibilityMode, Role
 from claude_proxy.domain.models import (
     ChatRequest,
-    MessageStopEvent,
+    ChatResponse,
+    ContentBlockDeltaEvent,
+    ContentBlockStartEvent,
+    ContentBlockStopEvent,
+    Message,
+    MessageStartEvent,
     ModelInfo,
-    RawReasoningDelta,
-    RawStop,
-    RawTextDelta,
-    RawUsage,
-    TextDeltaEvent,
+    ThinkingBlock,
+    ThinkingDelta,
+    ToolUseBlock,
+    UnknownBlock,
     Usage,
-    UsageEvent,
 )
-from claude_proxy.domain.enums import Role
-from claude_proxy.domain.models import ChatMessage
 from tests.conftest import collect_list
 
 
 def _request() -> ChatRequest:
     return ChatRequest(
         model="anthropic/claude-sonnet-4",
-        messages=(ChatMessage(role=Role.USER, text="Hello"),),
+        messages=(Message(role=Role.USER, content=()),),
         system=None,
-        max_tokens=32,
-        temperature=None,
-        stream=True,
         metadata=None,
+        temperature=None,
+        top_p=None,
+        max_tokens=64,
+        stop_sequences=(),
+        tools=(),
+        tool_choice=None,
+        thinking=None,
+        stream=True,
     )
 
 
@@ -40,55 +46,71 @@ def _model() -> ModelInfo:
         name="anthropic/claude-sonnet-4",
         provider="openrouter",
         enabled=True,
-        supports_streaming=True,
-        supports_text=True,
-        supports_tools=False,
-        supports_multimodal=False,
-        reasoning_mode=ReasoningMode.PROMOTE_IF_EMPTY,
+        supports_stream=True,
+        supports_nonstream=True,
+        supports_tools=True,
+        supports_thinking=True,
+        provider_quirks={},
     )
 
 
-async def _strict_events() -> AsyncIterator[object]:
-    yield RawReasoningDelta(text="hidden")
-    yield RawTextDelta(text="visible")
-    yield RawUsage(usage=Usage(input_tokens=1, output_tokens=2))
-    yield RawStop(stop_reason="end_turn")
-
-
-async def _reasoning_only_events() -> AsyncIterator[object]:
-    yield RawReasoningDelta(text="promoted")
-    yield RawStop(stop_reason="end_turn")
+async def _events() -> AsyncIterator[object]:
+    yield MessageStartEvent(
+        message=ChatResponse(
+            id="msg_1",
+            role=Role.ASSISTANT,
+            model="anthropic/claude-sonnet-4",
+            content=(),
+            stop_reason=None,
+            stop_sequence=None,
+            usage=Usage(),
+        ),
+    )
+    yield ContentBlockStartEvent(index=0, block=ThinkingBlock(thinking="", source_type="reasoning"))
+    yield ContentBlockDeltaEvent(index=0, delta=ThinkingDelta(thinking="mapped", source_type="reasoning"))
+    yield ContentBlockStopEvent(index=0)
+    yield ContentBlockStartEvent(index=1, block=ToolUseBlock(id="toolu_1", name="bash", input={}))
+    yield ContentBlockStopEvent(index=1)
+    yield ContentBlockStartEvent(index=2, block=UnknownBlock(unknown_type="vendor_blob", payload={"type": "vendor_blob"}))
+    yield ContentBlockStopEvent(index=2)
 
 
 @pytest.mark.asyncio
-async def test_normalizer_strict_drops_reasoning() -> None:
-    normalizer = AnthropicSafeStreamNormalizer(emit_usage=True, max_reasoning_buffer_chars=64)
+async def test_transparent_mode_preserves_mapped_reasoning_and_tools() -> None:
+    normalizer = CompatibilityNormalizer()
     events = await collect_list(
-        normalizer.normalize(
-            _request(),
-            _model(),
-            _strict_events(),
-            StreamPolicyName.STRICT,
-        ),
+        normalizer.normalize_stream(_request(), _model(), _events(), CompatibilityMode.TRANSPARENT),
     )
-
-    assert TextDeltaEvent(text="visible") in events
-    assert TextDeltaEvent(text="hidden") not in events
-    assert UsageEvent(usage=Usage(input_tokens=1, output_tokens=2)) in events
-    assert MessageStopEvent(stop_reason="end_turn") in events
+    assert any(
+        isinstance(event, ContentBlockStartEvent)
+        and isinstance(event.block, ThinkingBlock)
+        for event in events
+    )
+    assert any(
+        isinstance(event, ContentBlockDeltaEvent)
+        and isinstance(event.delta, ThinkingDelta)
+        for event in events
+    )
+    assert any(
+        isinstance(event, ContentBlockStartEvent)
+        and isinstance(event.block, ToolUseBlock)
+        for event in events
+    )
 
 
 @pytest.mark.asyncio
-async def test_normalizer_promotes_reasoning_when_text_is_empty() -> None:
-    normalizer = AnthropicSafeStreamNormalizer(emit_usage=False, max_reasoning_buffer_chars=64)
+async def test_compat_mode_suppresses_provider_mapped_reasoning_but_keeps_tools() -> None:
+    normalizer = CompatibilityNormalizer()
     events = await collect_list(
-        normalizer.normalize(
-            _request(),
-            _model(),
-            _reasoning_only_events(),
-            StreamPolicyName.PROMOTE_IF_EMPTY,
-        ),
+        normalizer.normalize_stream(_request(), _model(), _events(), CompatibilityMode.COMPAT),
     )
-
-    assert TextDeltaEvent(text="promoted") in events
-
+    assert not any(
+        isinstance(event, ContentBlockStartEvent)
+        and isinstance(event.block, ThinkingBlock)
+        for event in events
+    )
+    assert any(
+        isinstance(event, ContentBlockStartEvent)
+        and isinstance(event.block, ToolUseBlock)
+        for event in events
+    )

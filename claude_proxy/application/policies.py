@@ -1,108 +1,141 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 
-from claude_proxy.domain.enums import StreamPolicyName
-from claude_proxy.domain.errors import BridgeError
+from claude_proxy.domain.enums import CompatibilityMode
 from claude_proxy.domain.models import (
+    CanonicalEvent,
     ChatRequest,
-    DomainEvent,
+    ChatResponse,
+    ContentBlock,
+    ContentBlockDeltaEvent,
+    ContentBlockStartEvent,
+    ContentBlockStopEvent,
     ErrorEvent,
+    MessageDeltaEvent,
     MessageStartEvent,
-    MessageStopEvent,
     ModelInfo,
-    ProviderEvent,
-    RawError,
-    RawReasoningDelta,
-    RawStop,
-    RawTextDelta,
-    RawUnknown,
-    RawUsage,
-    TextDeltaEvent,
-    TextStartEvent,
-    TextStopEvent,
-    Usage,
-    UsageEvent,
+    PingEvent,
+    ProviderWarningEvent,
+    SignatureDelta,
+    ThinkingBlock,
+    ThinkingDelta,
+    ToolResultBlock,
+    UnknownBlock,
+    UnknownDelta,
 )
 
+_logger = logging.getLogger("claude_proxy.compat")
 
-class AnthropicSafeStreamNormalizer:
-    def __init__(
-        self,
-        *,
-        emit_usage: bool,
-        max_reasoning_buffer_chars: int,
-    ) -> None:
-        self._emit_usage = emit_usage
-        self._max_reasoning_buffer_chars = max_reasoning_buffer_chars
 
-    async def normalize(
+class CompatibilityNormalizer:
+    async def normalize_stream(
         self,
         request: ChatRequest,
         model: ModelInfo,
-        events: AsyncIterator[ProviderEvent],
-        policy: StreamPolicyName,
-    ) -> AsyncIterator[DomainEvent]:
-        del request
-        text_emitted = False
-        stop_reason: str | None = None
-        usage = Usage()
-        reasoning_parts: list[str] = []
-        reasoning_chars = 0
+        events: AsyncIterator[CanonicalEvent],
+        mode: CompatibilityMode,
+    ) -> AsyncIterator[CanonicalEvent]:
+        suppressed_indexes: set[int] = set()
 
-        yield MessageStartEvent(model=model.name)
-        yield TextStartEvent(index=0)
+        async for event in events:
+            if isinstance(event, ProviderWarningEvent):
+                self._maybe_log(mode, event.message, event.payload)
+                continue
 
-        try:
-            async for event in events:
-                if isinstance(event, RawTextDelta):
-                    if event.text:
-                        text_emitted = True
-                        yield TextDeltaEvent(text=event.text)
-                    continue
+            if isinstance(event, MessageStartEvent):
+                yield MessageStartEvent(message=self.normalize_response(request, model, event.message, mode))
+                continue
 
-                if isinstance(event, RawReasoningDelta):
-                    if policy is not StreamPolicyName.PROMOTE_IF_EMPTY or text_emitted:
-                        continue
-                    if reasoning_chars >= self._max_reasoning_buffer_chars:
-                        continue
-                    remaining = self._max_reasoning_buffer_chars - reasoning_chars
-                    chunk = event.text[:remaining]
-                    if chunk:
-                        reasoning_parts.append(chunk)
-                        reasoning_chars += len(chunk)
-                    continue
-
-                if isinstance(event, RawUsage):
-                    usage = Usage(
-                        input_tokens=event.usage.input_tokens
-                        if event.usage.input_tokens is not None
-                        else usage.input_tokens,
-                        output_tokens=event.usage.output_tokens
-                        if event.usage.output_tokens is not None
-                        else usage.output_tokens,
+            if isinstance(event, ContentBlockStartEvent):
+                block = self._normalize_block(event.block, mode)
+                if block is None:
+                    suppressed_indexes.add(event.index)
+                    self._maybe_log(
+                        mode,
+                        "suppressed_content_block",
+                        {"index": event.index, "type": getattr(event.block, "type", "unknown")},
                     )
                     continue
+                yield ContentBlockStartEvent(index=event.index, block=block)
+                continue
 
-                if isinstance(event, RawStop):
-                    stop_reason = event.stop_reason
+            if isinstance(event, ContentBlockDeltaEvent):
+                if event.index in suppressed_indexes:
                     continue
-
-                if isinstance(event, RawError):
-                    yield ErrorEvent(message=event.message, error_type=event.error_type)
-                    break
-
-                if isinstance(event, RawUnknown):
+                delta = self._normalize_delta(event.delta, mode)
+                if delta is None:
+                    self._maybe_log(mode, "suppressed_content_delta", {"index": event.index})
                     continue
-        except BridgeError as exc:
-            yield ErrorEvent(message=exc.message, error_type=exc.error_type)
-        except Exception:
-            yield ErrorEvent(message="unexpected stream failure", error_type="internal_error")
+                yield ContentBlockDeltaEvent(index=event.index, delta=delta)
+                continue
 
-        if not text_emitted and reasoning_parts:
-            yield TextDeltaEvent(text="".join(reasoning_parts))
+            if isinstance(event, ContentBlockStopEvent):
+                if event.index in suppressed_indexes:
+                    suppressed_indexes.remove(event.index)
+                    continue
+                yield event
+                continue
 
-        yield TextStopEvent(index=0)
-        if self._emit_usage:
-            yield UsageEvent(usage=usage)
-        yield MessageStopEvent(stop_reason=stop_reason)
+            if isinstance(event, (MessageDeltaEvent, PingEvent, ErrorEvent)):
+                yield event
+                continue
+
+            yield event
+
+    def normalize_response(
+        self,
+        request: ChatRequest,
+        model: ModelInfo,
+        response: ChatResponse,
+        mode: CompatibilityMode,
+    ) -> ChatResponse:
+        del request, model
+        blocks = tuple(
+            block
+            for block in (self._normalize_block(block, mode) for block in response.content)
+            if block is not None
+        )
+        return ChatResponse(
+            id=response.id,
+            role=response.role,
+            model=response.model,
+            content=blocks,
+            stop_reason=response.stop_reason,
+            stop_sequence=response.stop_sequence,
+            usage=response.usage,
+            metadata=response.metadata,
+            extras=response.extras,
+        )
+
+    def _normalize_block(self, block: ContentBlock, mode: CompatibilityMode) -> ContentBlock | None:
+        if isinstance(block, UnknownBlock):
+            return None
+        if isinstance(block, ThinkingBlock) and mode is CompatibilityMode.COMPAT and block.source_type != "thinking":
+            return None
+        if isinstance(block, ToolResultBlock) and isinstance(block.content, tuple):
+            nested = tuple(
+                nested_block
+                for nested_block in (self._normalize_block(item, mode) for item in block.content)
+                if nested_block is not None
+            )
+            return ToolResultBlock(
+                tool_use_id=block.tool_use_id,
+                content=nested,
+                is_error=block.is_error,
+                extras=block.extras,
+            )
+        return block
+
+    def _normalize_delta(self, delta: object, mode: CompatibilityMode) -> object | None:
+        if isinstance(delta, UnknownDelta):
+            return None
+        if isinstance(delta, (ThinkingDelta, SignatureDelta)) and mode is CompatibilityMode.COMPAT:
+            if getattr(delta, "source_type", "thinking") != "thinking":
+                return None
+        return delta
+
+    def _maybe_log(self, mode: CompatibilityMode, message: str, payload: dict[str, object]) -> None:
+        if mode is CompatibilityMode.DEBUG:
+            _logger.info("%s payload=%s", message, payload)

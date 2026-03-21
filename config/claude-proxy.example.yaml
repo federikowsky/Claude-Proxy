@@ -6,13 +6,13 @@ server:
   debug: false
 
 routing:
-  default_model: openai/gpt-4.1-mini
-  fallback_model: openai/gpt-4.1-mini
+  default_model: anthropic/claude-sonnet-4
+  fallback_model: anthropic/claude-sonnet-4
 
-stream:
-  policy: strict
+bridge:
+  compatibility_mode: transparent
   emit_usage: true
-  max_reasoning_buffer_chars: 32768
+  passthrough_request_fields: []
 
 providers:
   openrouter:
@@ -30,21 +30,21 @@ providers:
     debug_echo_upstream_body: false
 
 models:
-  openai/gpt-4.1-mini:
-    provider: openrouter
-    enabled: true
-    supports_streaming: true
-    supports_text: true
-    supports_tools: false
-    supports_multimodal: false
-    reasoning_mode: drop
-
   anthropic/claude-sonnet-4:
     provider: openrouter
     enabled: true
-    supports_streaming: true
-    supports_text: true
-    supports_tools: false
-    supports_multimodal: false
-    reasoning_mode: promote_if_empty
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: true
+    provider_quirks: {}
+
+  openai/gpt-4.1-mini:
+    provider: openrouter
+    enabled: true
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: true
+    provider_quirks: {}
 

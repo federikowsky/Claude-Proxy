@@ -8,9 +8,10 @@ from claude_proxy.infrastructure.resolvers import StaticModelResolver
 
 def test_resolver_returns_model_info(settings) -> None:
     resolver = StaticModelResolver(settings)
-    model = resolver.resolve("openai/gpt-4.1-mini")
-    assert model.name == "openai/gpt-4.1-mini"
-    assert model.provider == "openrouter"
+    model = resolver.resolve("anthropic/claude-sonnet-4")
+    assert model.name == "anthropic/claude-sonnet-4"
+    assert model.supports_stream is True
+    assert model.supports_nonstream is True
 
 
 def test_resolver_rejects_unknown_model(settings) -> None:

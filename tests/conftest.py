@@ -36,13 +36,13 @@ def base_config() -> dict[str, Any]:
             "debug": False,
         },
         "routing": {
-            "default_model": "openai/gpt-4.1-mini",
-            "fallback_model": "openai/gpt-4.1-mini",
+            "default_model": "anthropic/claude-sonnet-4",
+            "fallback_model": "anthropic/claude-sonnet-4",
         },
-        "stream": {
-            "policy": "strict",
+        "bridge": {
+            "compatibility_mode": "transparent",
             "emit_usage": True,
-            "max_reasoning_buffer_chars": 32768,
+            "passthrough_request_fields": [],
         },
         "providers": {
             "openrouter": {
@@ -61,23 +61,23 @@ def base_config() -> dict[str, Any]:
             },
         },
         "models": {
-            "openai/gpt-4.1-mini": {
-                "provider": "openrouter",
-                "enabled": True,
-                "supports_streaming": True,
-                "supports_text": True,
-                "supports_tools": False,
-                "supports_multimodal": False,
-                "reasoning_mode": "drop",
-            },
             "anthropic/claude-sonnet-4": {
                 "provider": "openrouter",
                 "enabled": True,
-                "supports_streaming": True,
-                "supports_text": True,
-                "supports_tools": False,
-                "supports_multimodal": False,
-                "reasoning_mode": "promote_if_empty",
+                "supports_stream": True,
+                "supports_nonstream": True,
+                "supports_tools": True,
+                "supports_thinking": True,
+                "provider_quirks": {},
+            },
+            "openai/gpt-4.1-mini": {
+                "provider": "openrouter",
+                "enabled": True,
+                "supports_stream": True,
+                "supports_nonstream": True,
+                "supports_tools": True,
+                "supports_thinking": True,
+                "provider_quirks": {},
             },
         },
     }
@@ -110,4 +110,3 @@ async def collect_bytes(iterator: AsyncIterator[bytes]) -> bytes:
     async for item in iterator:
         parts.append(item)
     return b"".join(parts)
-
