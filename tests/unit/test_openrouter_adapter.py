@@ -47,31 +47,39 @@ def _request() -> ChatRequest:
         tool_choice=None,
         thinking=None,
         stream=True,
-        extensions={"context_management": {"cwd": "."}},
+        extensions={
+            "context_management": {"cwd": "."},
+            "output_config": {"format": "json"},
+        },
     )
 
 
-def _model() -> ModelInfo:
+def _model(
+    *,
+    name: str = "anthropic/claude-sonnet-4",
+    unsupported_request_fields: tuple[str, ...] = (),
+) -> ModelInfo:
     return ModelInfo(
-        name="anthropic/claude-sonnet-4",
+        name=name,
         provider="openrouter",
         enabled=True,
         supports_stream=True,
         supports_nonstream=True,
         supports_tools=True,
         supports_thinking=True,
-        provider_quirks={},
+        unsupported_request_fields=unsupported_request_fields,
     )
 
 
 def test_translator_maps_full_request_payload() -> None:
-    translator = OpenRouterTranslator(passthrough_request_fields=("context_management",))
+    translator = OpenRouterTranslator()
     payload = translator.to_payload(_request(), _model())
     assert payload["model"] == "anthropic/claude-sonnet-4"
     assert payload["messages"][0]["content"][0]["type"] == "tool_use"
     assert payload["tools"][0]["name"] == "bash"
     assert payload["metadata"] == {"trace_id": "abc"}
     assert payload["context_management"] == {"cwd": "."}
+    assert payload["output_config"] == {"format": "json"}
 
 
 async def _chunks(data: bytes) -> AsyncIterator[bytes]:

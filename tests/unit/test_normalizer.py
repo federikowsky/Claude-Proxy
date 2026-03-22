@@ -56,7 +56,6 @@ def _model(
         supports_nonstream=True,
         supports_tools=True,
         supports_thinking=True,
-        provider_quirks={},
         thinking_passthrough_mode=thinking_passthrough_mode,
     )
 

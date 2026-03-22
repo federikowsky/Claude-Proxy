@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import httpx
 import pytest
+import yaml
 
+from claude_proxy.infrastructure.config import load_settings
 from claude_proxy.main import create_app
-from tests.conftest import MockAsyncByteStream
+from tests.conftest import MockAsyncByteStream, base_config
 
 
 def _stream_payload() -> dict[str, object]:
@@ -43,6 +48,38 @@ def _nonstream_payload_nonanthropic() -> dict[str, object]:
         "max_tokens": 64,
         "stream": False,
     }
+
+
+def _nonstream_payload_with_output_config(model: str) -> dict[str, object]:
+    return {
+        "model": model,
+        "messages": [{"role": "user", "content": "Inspect repo"}],
+        "max_tokens": 64,
+        "stream": False,
+        "output_config": {"format": "json"},
+    }
+
+
+def _settings_with_output_config_passthrough(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> object:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
+    cfg = base_config()
+    cfg["models"]["stepfun/step-3.5-flash:free"] = {
+        "provider": "openrouter",
+        "enabled": True,
+        "supports_stream": True,
+        "supports_nonstream": True,
+        "supports_tools": True,
+        "supports_thinking": True,
+        "thinking_passthrough_mode": "native_only",
+        "unsupported_request_fields": ["output_config"],
+    }
+    config_path = tmp_path / "config.yaml"
+    with config_path.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(cfg, handle, sort_keys=False)
+    return load_settings(config_path)
 
 
 @pytest.mark.asyncio
@@ -97,6 +134,90 @@ async def test_messages_endpoint_streams_structured_anthropic_sse(settings) -> N
         assert '"type":"input_json_delta"' in text
         assert '"type":"text_delta"' in text
         assert '"reasoning"' not in text
+    finally:
+        await app.state.client_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_messages_endpoint_strips_output_config_from_stepfun_upstream_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _settings_with_output_config_passthrough(tmp_path, monkeypatch)
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content.decode("utf-8")))
+        return httpx.Response(
+            200,
+            json={
+                "id": "msg_nonstream",
+                "type": "message",
+                "role": "assistant",
+                "model": "stepfun/step-3.5-flash:free",
+                "content": [{"type": "text", "text": "done"}],
+                "stop_reason": "end_turn",
+                "stop_sequence": None,
+                "usage": {"input_tokens": 4, "output_tokens": 7},
+            },
+        )
+
+    app = create_app(settings, transport=httpx.MockTransport(handler))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            "/v1/messages",
+            json=_nonstream_payload_with_output_config("stepfun/step-3.5-flash:free"),
+        )
+
+    try:
+        assert response.status_code == 200
+        assert captured["model"] == "stepfun/step-3.5-flash:free"
+        assert "output_config" not in captured
+    finally:
+        await app.state.client_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_messages_endpoint_preserves_output_config_for_supported_model_upstream_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _settings_with_output_config_passthrough(tmp_path, monkeypatch)
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content.decode("utf-8")))
+        return httpx.Response(
+            200,
+            json={
+                "id": "msg_nonstream",
+                "type": "message",
+                "role": "assistant",
+                "model": "anthropic/claude-sonnet-4",
+                "content": [{"type": "text", "text": "done"}],
+                "stop_reason": "end_turn",
+                "stop_sequence": None,
+                "usage": {"input_tokens": 4, "output_tokens": 7},
+            },
+        )
+
+    app = create_app(settings, transport=httpx.MockTransport(handler))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            "/v1/messages",
+            json=_nonstream_payload_with_output_config("anthropic/claude-sonnet-4"),
+        )
+
+    try:
+        assert response.status_code == 200
+        assert captured["model"] == "anthropic/claude-sonnet-4"
+        assert captured["output_config"] == {"format": "json"}
     finally:
         await app.state.client_manager.close()
 

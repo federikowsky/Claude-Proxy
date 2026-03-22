@@ -87,9 +87,6 @@ class IncrementalSseParser:
 
 
 class OpenRouterTranslator:
-    def __init__(self, passthrough_request_fields: tuple[str, ...] = ()) -> None:
-        self._passthrough_request_fields = set(passthrough_request_fields)
-
     def to_payload(self, request: ChatRequest, model: ModelInfo) -> dict[str, object]:
         payload: dict[str, object] = {
             "model": model.name,
@@ -120,8 +117,7 @@ class OpenRouterTranslator:
         if request.thinking is not None:
             payload["thinking"] = thinking_config_to_payload(request.thinking)
         for key, value in request.extensions.items():
-            if key in self._passthrough_request_fields:
-                payload[key] = value
+            payload[key] = value
         return payload
 
 

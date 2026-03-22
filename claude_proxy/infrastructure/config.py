@@ -68,7 +68,7 @@ class ModelSettings(BaseModel):
     supports_tools: bool = True
     supports_thinking: bool = True
     thinking_passthrough_mode: ThinkingPassthroughMode = ThinkingPassthroughMode.FULL
-    provider_quirks: dict[str, Any] = Field(default_factory=dict)
+    unsupported_request_fields: tuple[str, ...] = ()
 
 
 class Settings(BaseModel):

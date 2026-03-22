@@ -9,6 +9,7 @@ from claude_proxy.api.http_debug import install_http_debug_middleware
 from claude_proxy.api.routes.health import router as health_router
 from claude_proxy.api.routes.messages import router as messages_router
 from claude_proxy.application.policies import CompatibilityNormalizer, StreamEventSequencer
+from claude_proxy.application.request_preparer import ModelAwareRequestPreparer
 from claude_proxy.application.services import MessageService
 from claude_proxy.application.sse import AnthropicResponseEncoder, AnthropicSseEncoder
 from claude_proxy.infrastructure.config import Settings, load_settings
@@ -27,6 +28,9 @@ def create_app(
     setup_logging(resolved_settings.server.log_level)
     client_manager = SharedAsyncClientManager(resolved_settings, transport=transport)
     resolver = StaticModelResolver(resolved_settings)
+    request_preparer = ModelAwareRequestPreparer(
+        allowed_request_fields=resolved_settings.bridge.passthrough_request_fields,
+    )
     normalizer = CompatibilityNormalizer()
     sequencer = StreamEventSequencer()
     sse_encoder = AnthropicSseEncoder()
@@ -35,12 +39,12 @@ def create_app(
     message_service = MessageService(
         resolver=resolver,
         providers=providers,
+        request_preparer=request_preparer,
         normalizer=normalizer,
         sequencer=sequencer,
         sse_encoder=sse_encoder,
         response_encoder=response_encoder,
         compatibility_mode=resolved_settings.bridge.compatibility_mode,
-        passthrough_request_fields=resolved_settings.bridge.passthrough_request_fields,
         debug=resolved_settings.server.debug,
     )
 

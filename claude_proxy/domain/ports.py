@@ -7,6 +7,10 @@ from claude_proxy.domain.enums import CompatibilityMode
 from claude_proxy.domain.models import CanonicalEvent, ChatRequest, ChatResponse, ModelInfo
 
 
+class RequestPreparer(Protocol):
+    def prepare(self, request: ChatRequest, model: ModelInfo) -> ChatRequest: ...
+
+
 class ModelProvider(Protocol):
     async def stream(
         self,

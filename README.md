@@ -26,6 +26,8 @@ It accepts Anthropic Messages API requests, forwards them to OpenRouter with min
   - `full` preserve all normalized thinking blocks/deltas
   - `native_only` preserve only Anthropic-native `source_type="thinking"`
   - `off` suppress all thinking in egress
+- validates client extension fields at ingress and sanitizes them model-by-model via a request preparation step before provider dispatch
+- supports per-model request stripping with `unsupported_request_fields`
 - keeps one shared `httpx.AsyncClient` per process
 - parses SSE incrementally without buffering the full stream
 
@@ -51,6 +53,9 @@ export CLAUDE_PROXY__BRIDGE__COMPATIBILITY_MODE=compat
 export CLAUDE_PROXY__SERVER__PORT=8090
 ```
 
+`bridge.passthrough_request_fields` defines which extra top-level Anthropic/client request fields are accepted by the proxy.
+Per-model stripping/adaptation then happens in the application request-preparation layer before the provider adapter sees the request.
+
 Model example:
 
 ```yaml
@@ -60,6 +65,10 @@ models:
 
   openai/gpt-4.1-mini:
     thinking_passthrough_mode: native_only
+
+  stepfun/step-3.5-flash:free:
+    unsupported_request_fields:
+      - output_config
 ```
 
 ## Migration notes from V1
@@ -71,3 +80,4 @@ models:
 - thinking is no longer flattened or promoted into final answer text.
 - `bridge.compatibility_mode` replaces the old stream policy behavior.
 - `models.<name>.thinking_passthrough_mode` controls whether normalized thinking is passed through as Anthropic thinking on egress.
+- `models.<name>.unsupported_request_fields` controls model-aware request stripping before provider dispatch.

@@ -17,9 +17,7 @@ def build_provider_registry(
         "openrouter": lambda provider_settings: OpenRouterProvider(
             settings=provider_settings,
             client_manager=client_manager,
-            translator=OpenRouterTranslator(
-                passthrough_request_fields=settings.bridge.passthrough_request_fields,
-            ),
+            translator=OpenRouterTranslator(),
         ),
     }
     providers: dict[str, ModelProvider] = {}

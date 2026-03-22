@@ -53,3 +53,19 @@ def test_load_settings_supports_model_thinking_passthrough_mode(
     settings = load_settings(config_path)
 
     assert settings.models["openai/gpt-4.1-mini"].thinking_passthrough_mode is ThinkingPassthroughMode.OFF
+
+
+def test_load_settings_supports_model_unsupported_request_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = base_config()
+    config["models"]["openai/gpt-4.1-mini"]["unsupported_request_fields"] = ["output_config"]
+    config_path = tmp_path / "config.yaml"
+    with config_path.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(config, handle, sort_keys=False)
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
+    settings = load_settings(config_path)
+
+    assert settings.models["openai/gpt-4.1-mini"].unsupported_request_fields == ("output_config",)

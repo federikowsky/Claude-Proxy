@@ -42,7 +42,7 @@ def base_config() -> dict[str, Any]:
         "bridge": {
             "compatibility_mode": "transparent",
             "emit_usage": True,
-            "passthrough_request_fields": [],
+            "passthrough_request_fields": ["output_config"],
         },
         "providers": {
             "openrouter": {
@@ -69,7 +69,6 @@ def base_config() -> dict[str, Any]:
                 "supports_tools": True,
                 "supports_thinking": True,
                 "thinking_passthrough_mode": "full",
-                "provider_quirks": {},
             },
             "openai/gpt-4.1-mini": {
                 "provider": "openrouter",
@@ -79,7 +78,6 @@ def base_config() -> dict[str, Any]:
                 "supports_tools": True,
                 "supports_thinking": True,
                 "thinking_passthrough_mode": "native_only",
-                "provider_quirks": {},
             },
         },
     }

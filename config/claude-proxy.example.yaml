@@ -13,7 +13,10 @@ routing:
 bridge:
   compatibility_mode: transparent
   emit_usage: true
-  passthrough_request_fields: []
+  # Anthropic/client extension fields accepted by the proxy at ingress.
+  # Per-model stripping/adaptation happens later in the request_preparer.
+  passthrough_request_fields:
+    - output_config
 
 providers:
   openrouter:
@@ -39,7 +42,6 @@ models:
     supports_tools: true
     supports_thinking: true
     thinking_passthrough_mode: full
-    provider_quirks: {}
 
   openai/gpt-4.1-mini:
     provider: openrouter
@@ -49,4 +51,16 @@ models:
     supports_tools: true
     supports_thinking: true
     thinking_passthrough_mode: native_only
-    provider_quirks: {}
+
+  # Example of per-model upstream request stripping for providers/models
+  # that reject otherwise valid Anthropic passthrough fields.
+  stepfun/step-3.5-flash:free:
+    provider: openrouter
+    enabled: false
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: true
+    thinking_passthrough_mode: off
+    unsupported_request_fields:
+      - output_config

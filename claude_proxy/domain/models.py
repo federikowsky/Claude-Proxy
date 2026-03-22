@@ -114,8 +114,8 @@ class ModelInfo:
     supports_nonstream: bool
     supports_tools: bool
     supports_thinking: bool
-    provider_quirks: JsonMap = field(default_factory=dict)
     thinking_passthrough_mode: ThinkingPassthroughMode = ThinkingPassthroughMode.FULL
+    unsupported_request_fields: tuple[str, ...] = ()
 
 
 @dataclass(slots=True, frozen=True)
