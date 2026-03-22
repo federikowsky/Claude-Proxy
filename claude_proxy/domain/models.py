@@ -42,9 +42,6 @@ class UnknownBlock:
     type: str = field(init=False, default="unknown")
 
 
-ContentBlock: TypeAlias = TextBlock | ToolUseBlock | "ToolResultBlock" | ThinkingBlock | UnknownBlock
-
-
 @dataclass(slots=True, frozen=True)
 class ToolResultBlock:
     tool_use_id: str
@@ -103,6 +100,12 @@ class ChatRequest:
     thinking: ThinkingConfig | None
     stream: bool
     extensions: JsonMap = field(default_factory=dict)
+
+
+@dataclass(slots=True, frozen=True)
+class ProviderRequestContext:
+    headers: tuple[tuple[str, str], ...] = ()
+    query_params: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(slots=True, frozen=True)

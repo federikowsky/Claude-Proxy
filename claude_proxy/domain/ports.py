@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from typing import Protocol
 
 from claude_proxy.domain.enums import CompatibilityMode
-from claude_proxy.domain.models import CanonicalEvent, ChatRequest, ChatResponse, ModelInfo
+from claude_proxy.domain.models import CanonicalEvent, ChatRequest, ChatResponse, ModelInfo, ProviderRequestContext
 
 
 class RequestPreparer(Protocol):
@@ -16,13 +16,22 @@ class ModelProvider(Protocol):
         self,
         request: ChatRequest,
         model: ModelInfo,
+        provider_context: ProviderRequestContext | None = None,
     ) -> AsyncIterator[CanonicalEvent]: ...
 
     async def complete(
         self,
         request: ChatRequest,
         model: ModelInfo,
+        provider_context: ProviderRequestContext | None = None,
     ) -> ChatResponse: ...
+
+    async def count_tokens(
+        self,
+        request: ChatRequest,
+        model: ModelInfo,
+        provider_context: ProviderRequestContext | None = None,
+    ) -> int: ...
 
 
 class ModelResolver(Protocol):

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from claude_proxy.api.schemas import AnthropicMessagesRequest
+from claude_proxy.api.schemas import AnthropicCountTokensRequest, AnthropicMessagesRequest
 from claude_proxy.domain.models import TextBlock, ToolResultBlock
 
 
@@ -64,3 +64,21 @@ def test_request_schema_rejects_invalid_content_block_shape() -> None:
                 "stream": True,
             },
         )
+
+
+def test_count_tokens_schema_builds_nonstream_probe_request() -> None:
+    payload = AnthropicCountTokensRequest.model_validate(
+        {
+            "model": "anthropic/claude-sonnet-4",
+            "messages": [{"role": "user", "content": "Count this"}],
+            "tools": [{"name": "bash", "input_schema": {"type": "object"}}],
+            "thinking": {"type": "enabled", "budget_tokens": 2048},
+            "context_management": {"workspace": "repo"},
+        },
+    )
+
+    request = payload.to_domain()
+    assert request.stream is False
+    assert request.max_tokens == 1
+    assert request.thinking is not None and request.thinking.budget_tokens == 2048
+    assert request.extensions["context_management"] == {"workspace": "repo"}

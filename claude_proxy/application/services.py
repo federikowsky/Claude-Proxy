@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator, Mapping
 
 from claude_proxy.domain.enums import CompatibilityMode
 from claude_proxy.domain.errors import RoutingError
-from claude_proxy.domain.models import ChatRequest
+from claude_proxy.domain.models import ChatRequest, ProviderRequestContext
 from claude_proxy.domain.ports import (
     ModelProvider,
     ModelResolver,
@@ -42,7 +42,11 @@ class MessageService:
         self._compatibility_mode = compatibility_mode
         self._debug = debug
 
-    async def stream(self, request: ChatRequest) -> AsyncIterator[bytes]:
+    async def stream(
+        self,
+        request: ChatRequest,
+        provider_context: ProviderRequestContext | None = None,
+    ) -> AsyncIterator[bytes]:
         model, provider = self._resolve(request)
         prepared_request = self._request_preparer.prepare(request, model)
         self._validate_request(prepared_request, model)
@@ -54,7 +58,7 @@ class MessageService:
                 self._compatibility_mode.value,
                 len(prepared_request.messages),
             )
-        events = await provider.stream(prepared_request, model)
+        events = await provider.stream(prepared_request, model, provider_context)
         normalized = self._normalizer.normalize_stream(
             prepared_request,
             model,
@@ -63,7 +67,11 @@ class MessageService:
         )
         return self._sse_encoder.encode(self._sequencer.sequence(normalized))
 
-    async def complete(self, request: ChatRequest) -> dict[str, object]:
+    async def complete(
+        self,
+        request: ChatRequest,
+        provider_context: ProviderRequestContext | None = None,
+    ) -> dict[str, object]:
         model, provider = self._resolve(request)
         prepared_request = self._request_preparer.prepare(request, model)
         self._validate_request(prepared_request, model)
@@ -75,7 +83,7 @@ class MessageService:
                 self._compatibility_mode.value,
                 len(prepared_request.messages),
             )
-        response = await provider.complete(prepared_request, model)
+        response = await provider.complete(prepared_request, model, provider_context)
         normalized = self._normalizer.normalize_response(
             prepared_request,
             model,
@@ -83,6 +91,25 @@ class MessageService:
             self._compatibility_mode,
         )
         return self._response_encoder.encode(normalized)
+
+    async def count_tokens(
+        self,
+        request: ChatRequest,
+        provider_context: ProviderRequestContext | None = None,
+    ) -> dict[str, int]:
+        model, provider = self._resolve(request)
+        prepared_request = self._request_preparer.prepare(request, model)
+        self._validate_request(prepared_request, model)
+        if self._debug:
+            _logger.info(
+                "count_tokens_start model=%s provider=%s compatibility=%s messages=%d",
+                model.name,
+                model.provider,
+                self._compatibility_mode.value,
+                len(prepared_request.messages),
+            )
+        input_tokens = await provider.count_tokens(prepared_request, model, provider_context)
+        return {"input_tokens": input_tokens}
 
     def _resolve(self, request: ChatRequest) -> tuple[object, ModelProvider]:
         model = self._resolver.resolve(request.model)

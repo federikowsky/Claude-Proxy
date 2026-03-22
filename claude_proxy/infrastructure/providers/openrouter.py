@@ -22,6 +22,7 @@ from claude_proxy.domain.models import (
     MessageStopEvent,
     ModelInfo,
     PingEvent,
+    ProviderRequestContext,
     ProviderWarningEvent,
 )
 from claude_proxy.domain.serialization import (
@@ -118,6 +119,13 @@ class OpenRouterTranslator:
             payload["thinking"] = thinking_config_to_payload(request.thinking)
         for key, value in request.extensions.items():
             payload[key] = value
+        return payload
+
+    def to_count_tokens_probe_payload(self, request: ChatRequest, model: ModelInfo) -> dict[str, object]:
+        payload = self.to_payload(request, model)
+        payload["stream"] = False
+        payload["max_tokens"] = 1
+        payload.pop("thinking", None)
         return payload
 
 
@@ -228,13 +236,19 @@ class OpenRouterProvider:
         self._translator = translator or OpenRouterTranslator()
         self._parser = parser or IncrementalSseParser()
 
-    async def stream(self, request: ChatRequest, model: ModelInfo) -> AsyncIterator[CanonicalEvent]:
+    async def stream(
+        self,
+        request: ChatRequest,
+        model: ModelInfo,
+        provider_context: ProviderRequestContext | None = None,
+    ) -> AsyncIterator[CanonicalEvent]:
         client = await self._client_manager.get_client()
         payload = self._translator.to_payload(request, model)
         stream_context = client.stream(
             "POST",
             self._messages_url(),
-            headers=self._headers(accept="text/event-stream"),
+            headers=self._headers(accept="text/event-stream", provider_context=provider_context),
+            params=self._params(provider_context),
             json=payload,
             timeout=self._timeout(),
         )
@@ -252,14 +266,20 @@ class OpenRouterProvider:
 
         return iterator()
 
-    async def complete(self, request: ChatRequest, model: ModelInfo) -> ChatResponse:
+    async def complete(
+        self,
+        request: ChatRequest,
+        model: ModelInfo,
+        provider_context: ProviderRequestContext | None = None,
+    ) -> ChatResponse:
         client = await self._client_manager.get_client()
         payload = self._translator.to_payload(request, model)
         try:
             response = await client.request(
                 "POST",
                 self._messages_url(),
-                headers=self._headers(accept="application/json"),
+                headers=self._headers(accept="application/json", provider_context=provider_context),
+                params=self._params(provider_context),
                 json=payload,
                 timeout=self._timeout(),
             )
@@ -279,6 +299,42 @@ class OpenRouterProvider:
             raise ProviderProtocolError("invalid upstream response payload")
         return response_from_payload(payload)
 
+    async def count_tokens(
+        self,
+        request: ChatRequest,
+        model: ModelInfo,
+        provider_context: ProviderRequestContext | None = None,
+    ) -> int:
+        client = await self._client_manager.get_client()
+        payload = self._translator.to_count_tokens_probe_payload(request, model)
+        try:
+            response = await client.request(
+                "POST",
+                self._messages_url(),
+                headers=self._headers(accept="application/json", provider_context=provider_context),
+                params=self._params(provider_context),
+                json=payload,
+                timeout=self._timeout(),
+            )
+        except httpx.TimeoutException as exc:
+            raise UpstreamTimeoutError("OpenRouter timed out") from exc
+        except httpx.HTTPError as exc:
+            raise ProviderProtocolError(f"OpenRouter request failed: {exc}") from exc
+
+        if response.status_code >= 400:
+            _raise_openrouter_http_error(response.status_code, response.content)
+
+        try:
+            payload = response.json()
+        except Exception as exc:
+            raise ProviderProtocolError("invalid upstream JSON response") from exc
+        if not isinstance(payload, dict):
+            raise ProviderProtocolError("invalid upstream response payload")
+        usage = usage_from_payload(payload.get("usage"))
+        if usage.input_tokens is None:
+            raise ProviderProtocolError("missing upstream input token usage")
+        return usage.input_tokens
+
     async def _open_stream(self, stream_context: Any) -> httpx.Response:
         try:
             response = await stream_context.__aenter__()
@@ -297,7 +353,12 @@ class OpenRouterProvider:
         base_url = self._settings.base_url.rstrip("/")
         return f"{base_url}/messages"
 
-    def _headers(self, *, accept: str) -> dict[str, str]:
+    def _headers(
+        self,
+        *,
+        accept: str,
+        provider_context: ProviderRequestContext | None = None,
+    ) -> dict[str, str]:
         headers = {
             "Authorization": f"Bearer {self._settings.api_key.get_secret_value()}",
             "Accept": accept,
@@ -308,7 +369,17 @@ class OpenRouterProvider:
             headers["HTTP-Referer"] = self._settings.app_url
         if self._settings.debug_echo_upstream_body:
             headers["X-Debug"] = "1"
+        if provider_context is not None:
+            headers.update(provider_context.headers)
         return headers
+
+    def _params(
+        self,
+        provider_context: ProviderRequestContext | None,
+    ) -> tuple[tuple[str, str], ...] | None:
+        if provider_context is None or not provider_context.query_params:
+            return None
+        return provider_context.query_params
 
     def _timeout(self) -> httpx.Timeout:
         return httpx.Timeout(

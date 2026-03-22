@@ -2,7 +2,12 @@
 
 `claude-proxy` e un proxy locale Python 3.14 compatibile con l'API Anthropic Messages, pensato per far usare Claude Code attraverso OpenRouter senza appiattire il protocollo a testo semplice.
 
-Il proxy riceve richieste `POST /v1/messages` in formato Anthropic, risolve il modello target, prepara la request in modo model-aware, inoltra la chiamata al provider e restituisce una risposta Anthropic-compatible in JSON o SSE.
+Il proxy riceve richieste Anthropic-compatible su:
+
+- `POST /v1/messages`
+- `POST /v1/messages/count_tokens`
+
+Risolve il modello target, prepara la request in modo model-aware, inoltra la chiamata al provider e restituisce una risposta Anthropic-compatible in JSON o SSE.
 
 ## Obiettivo
 
@@ -22,6 +27,7 @@ Funzionalita implementate:
 
 - `GET /health`
 - `POST /v1/messages`
+- `POST /v1/messages/count_tokens`
 - supporto `stream=true`
 - supporto `stream=false`
 - FastAPI + `httpx.AsyncClient` condiviso per processo
@@ -82,8 +88,39 @@ Eventi/semantiche supportati:
 - usage
 - stop reason
 - stop sequence
+- forwarding dei request header `anthropic-beta` e `anthropic-version`
 
 Il sequencer SSE garantisce che in output non esistano blocchi annidati: al massimo un content block aperto alla volta.
+
+## Gateway Anthropic per Claude Code
+
+Per usare `claude-proxy` come `ANTHROPIC_BASE_URL` con Claude Code, il proxy espone la surface minima richiesta dal formato Anthropic Messages:
+
+- `POST /v1/messages`
+- `POST /v1/messages/count_tokens`
+
+Inoltre inoltra upstream:
+
+- header `anthropic-beta`
+- header `anthropic-version`
+- query string originale, inclusi casi come `?beta=true`
+
+Questo evita che Claude Code perda funzionalita legate a beta/header negotiation quando parla con il gateway invece che con Anthropic direttamente.
+
+## Limitazione OpenRouter su `count_tokens`
+
+Alla data del 2026-03-22 l'API pubblica OpenRouter espone `POST /messages`, ma non un endpoint nativo `POST /messages/count_tokens`.
+
+Per mantenere compatibilita con Claude Code, il proxy implementa `POST /v1/messages/count_tokens` come shim OpenRouter-specifico:
+
+- invia upstream una richiesta `POST /messages` non-stream
+- forza `max_tokens=1`
+- restituisce al client solo `usage.input_tokens`
+- rimuove `thinking` dal probe per evitare vincoli di budget/output che non influenzano il conteggio input
+
+Limite noto:
+
+- il conteggio passa comunque da una request reale verso OpenRouter, quindi introduce un round-trip upstream aggiuntivo e puo comportare billing minimo lato completion
 
 ## Modalita di compatibilita
 

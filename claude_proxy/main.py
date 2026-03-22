@@ -62,7 +62,7 @@ def create_app(
     app.include_router(health_router)
     app.include_router(messages_router)
     install_error_handlers(app)
-    # install_http_debug_middleware(app)
+    install_http_debug_middleware(app)
     return app
 
 

@@ -34,7 +34,7 @@ class MessageInput(BaseModel):
         return value
 
 
-class AnthropicMessagesRequest(BaseModel):
+class _AnthropicRequestBase(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     model: str
@@ -43,14 +43,12 @@ class AnthropicMessagesRequest(BaseModel):
     metadata: dict[str, Any] | None = None
     temperature: float | None = None
     top_p: float | None = None
-    max_tokens: int = Field(gt=0)
     stop_sequences: list[str] | None = None
-    stream: bool = False
     tools: list[dict[str, Any]] | None = None
     tool_choice: dict[str, Any] | str | None = None
     thinking: dict[str, Any] | None = None
 
-    def to_domain(self) -> ChatRequest:
+    def _to_domain(self, *, max_tokens: int, stream: bool) -> ChatRequest:
         tools = tuple(tool_definition_from_payload(item) for item in (self.tools or ()))
         tool_choice = (
             tool_choice_from_payload(self.tool_choice)
@@ -79,15 +77,28 @@ class AnthropicMessagesRequest(BaseModel):
                 metadata=self.metadata,
                 temperature=self.temperature,
                 top_p=self.top_p,
-                max_tokens=self.max_tokens,
+                max_tokens=max_tokens,
                 stop_sequences=tuple(self.stop_sequences or ()),
                 tools=tools,
                 tool_choice=tool_choice,
                 thinking=thinking,
-                stream=self.stream,
+                stream=stream,
                 extensions=dict(self.model_extra or {}),
             )
         except RequestValidationError:
             raise
         except Exception as exc:
             raise RequestValidationError(str(exc)) from exc
+
+
+class AnthropicMessagesRequest(_AnthropicRequestBase):
+    max_tokens: int = Field(gt=0)
+    stream: bool = False
+
+    def to_domain(self) -> ChatRequest:
+        return self._to_domain(max_tokens=self.max_tokens, stream=self.stream)
+
+
+class AnthropicCountTokensRequest(_AnthropicRequestBase):
+    def to_domain(self) -> ChatRequest:
+        return self._to_domain(max_tokens=1, stream=False)

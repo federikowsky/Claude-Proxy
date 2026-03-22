@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from dataclasses import replace
 
 import pytest
 
@@ -15,6 +16,7 @@ from claude_proxy.domain.models import (
     MessageStopEvent,
     ModelInfo,
     ThinkingBlock,
+    ThinkingConfig,
     ThinkingDelta,
     ToolDefinition,
     ToolUseBlock,
@@ -80,6 +82,16 @@ def test_translator_maps_full_request_payload() -> None:
     assert payload["metadata"] == {"trace_id": "abc"}
     assert payload["context_management"] == {"cwd": "."}
     assert payload["output_config"] == {"format": "json"}
+
+
+def test_translator_builds_count_tokens_probe_payload() -> None:
+    translator = OpenRouterTranslator()
+    request = replace(_request(), thinking=ThinkingConfig(type="enabled", budget_tokens=2048))
+    payload = translator.to_count_tokens_probe_payload(request, _model())
+    assert payload["max_tokens"] == 1
+    assert payload["stream"] is False
+    assert "thinking" not in payload
+    assert payload["messages"][0]["content"][0]["type"] == "tool_use"
 
 
 async def _chunks(data: bytes) -> AsyncIterator[bytes]:
