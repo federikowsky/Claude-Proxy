@@ -390,6 +390,55 @@ async def test_messages_endpoint_maps_upstream_auth_failure_to_502(settings) -> 
 
     try:
         assert response.status_code == 502
+        assert response.json()["error"]["type"] == "provider_auth_error"
         assert response.json()["error"]["message"] == "bad key"
+        assert response.json()["error"]["provider"] == "openrouter"
+        assert response.json()["error"]["upstream_status"] == 401
+    finally:
+        await app.state.client_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_messages_endpoint_maps_upstream_rate_limit_to_429_in_nonstream(settings) -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, json={"error": {"message": "model unavailable"}})
+
+    app = create_app(settings, transport=httpx.MockTransport(handler))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post("/v1/messages", json=_nonstream_payload())
+
+    try:
+        assert response.status_code == 429
+        payload = response.json()["error"]
+        assert payload["type"] == "provider_http_error"
+        assert payload["message"] == "model unavailable"
+        assert payload["provider"] == "openrouter"
+        assert payload["upstream_status"] == 429
+    finally:
+        await app.state.client_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_messages_endpoint_maps_upstream_rate_limit_to_429_in_stream(settings) -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, json={"error": {"message": "model unavailable"}})
+
+    app = create_app(settings, transport=httpx.MockTransport(handler))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post("/v1/messages", json=_stream_payload())
+
+    try:
+        assert response.status_code == 429
+        payload = response.json()["error"]
+        assert payload["type"] == "provider_http_error"
+        assert payload["message"] == "model unavailable"
+        assert payload["provider"] == "openrouter"
+        assert payload["upstream_status"] == 429
     finally:
         await app.state.client_manager.close()

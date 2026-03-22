@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-from claude_proxy.domain.errors import ProviderAuthError, ProviderProtocolError, UpstreamTimeoutError
+from claude_proxy.domain.errors import ProviderAuthError, ProviderHttpError, ProviderProtocolError, UpstreamTimeoutError
 from claude_proxy.domain.models import (
     CanonicalEvent,
     ChatRequest,
@@ -269,10 +269,7 @@ class OpenRouterProvider:
             raise ProviderProtocolError(f"OpenRouter request failed: {exc}") from exc
 
         if response.status_code >= 400:
-            message = _provider_error_message(response.content)
-            if response.status_code == 401:
-                raise ProviderAuthError(message or "OpenRouter authentication failed")
-            raise ProviderProtocolError(message or f"OpenRouter returned HTTP {response.status_code}")
+            _raise_openrouter_http_error(response.status_code, response.content)
 
         try:
             payload = response.json()
@@ -293,10 +290,7 @@ class OpenRouterProvider:
         if response.status_code >= 400:
             body = await response.aread()
             await stream_context.__aexit__(None, None, None)
-            message = _provider_error_message(body)
-            if response.status_code == 401:
-                raise ProviderAuthError(message or "OpenRouter authentication failed")
-            raise ProviderProtocolError(message or f"OpenRouter returned HTTP {response.status_code}")
+            _raise_openrouter_http_error(response.status_code, body)
         return response
 
     def _messages_url(self) -> str:
@@ -359,6 +353,23 @@ def _provider_error_message(body: bytes) -> str | None:
         if isinstance(message, str) and message:
             return message
     return None
+
+
+def _raise_openrouter_http_error(status: int, body: bytes) -> None:
+    message = _provider_error_message(body)
+    if status in {401, 403}:
+        raise ProviderAuthError(
+            message or "OpenRouter authentication failed",
+            details={
+                "provider": "openrouter",
+                "upstream_status": status,
+            },
+        )
+    raise ProviderHttpError(
+        message or f"OpenRouter returned HTTP {status}",
+        upstream_status=status,
+        provider="openrouter",
+    )
 
 
 def _role_or_default(value: Any):
