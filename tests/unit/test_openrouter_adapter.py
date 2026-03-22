@@ -12,6 +12,7 @@ from claude_proxy.domain.models import (
     InputJsonDelta,
     Message,
     MessageStartEvent,
+    MessageStopEvent,
     ModelInfo,
     ThinkingBlock,
     ThinkingDelta,
@@ -123,3 +124,29 @@ def test_stream_normalizer_maps_reasoning_to_thinking() -> None:
     )
     assert isinstance(event, ContentBlockDeltaEvent)
     assert isinstance(event.delta, ThinkingDelta)
+
+
+def test_stream_normalizer_emits_single_stop_for_message_stop_then_done() -> None:
+    start = (
+        '{"type":"message_start","message":'
+        '{"id":"msg_1","role":"assistant","model":"m","usage":{"input_tokens":1}}}'
+    )
+    normalizer = OpenRouterStreamNormalizer()
+    normalizer.normalize(SseMessage(event="message_start", data=start))
+    first = normalizer.normalize(SseMessage(event="message_stop", data='{"type":"message_stop"}'))
+    second = normalizer.normalize(SseMessage(event=None, data="[DONE]"))
+    assert isinstance(first, MessageStopEvent)
+    assert second is None
+
+
+def test_stream_normalizer_emits_single_stop_for_done_then_message_stop() -> None:
+    start = (
+        '{"type":"message_start","message":'
+        '{"id":"msg_1","role":"assistant","model":"m","usage":{"input_tokens":1}}}'
+    )
+    normalizer = OpenRouterStreamNormalizer()
+    normalizer.normalize(SseMessage(event="message_start", data=start))
+    first = normalizer.normalize(SseMessage(event=None, data="[DONE]"))
+    second = normalizer.normalize(SseMessage(event="message_stop", data='{"type":"message_stop"}'))
+    assert isinstance(first, MessageStopEvent)
+    assert second is None

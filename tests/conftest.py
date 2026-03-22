@@ -68,6 +68,7 @@ def base_config() -> dict[str, Any]:
                 "supports_nonstream": True,
                 "supports_tools": True,
                 "supports_thinking": True,
+                "thinking_passthrough_mode": "full",
                 "provider_quirks": {},
             },
             "openai/gpt-4.1-mini": {
@@ -77,6 +78,7 @@ def base_config() -> dict[str, Any]:
                 "supports_nonstream": True,
                 "supports_tools": True,
                 "supports_thinking": True,
+                "thinking_passthrough_mode": "native_only",
                 "provider_quirks": {},
             },
         },

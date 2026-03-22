@@ -25,4 +25,5 @@ class StaticModelResolver:
             supports_tools=config.supports_tools,
             supports_thinking=config.supports_thinking,
             provider_quirks=config.provider_quirks,
+            thinking_passthrough_mode=config.thinking_passthrough_mode,
         )

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from claude_proxy.application.policies import CompatibilityNormalizer
+from claude_proxy.application.policies import CompatibilityNormalizer, StreamEventSequencer
 from claude_proxy.application.sse import AnthropicSseEncoder
 from claude_proxy.domain.enums import CompatibilityMode
 from claude_proxy.domain.models import ChatRequest, Message, ModelInfo
@@ -89,15 +89,18 @@ async def test_golden_sse_output(
     fixture = (fixtures_dir / fixture_name).read_bytes()
     expected = (fixtures_dir / expected_name).read_bytes()
     compatibility = CompatibilityNormalizer()
+    sequencer = StreamEventSequencer()
     encoder = AnthropicSseEncoder()
 
     actual = await collect_bytes(
         encoder.encode(
-            compatibility.normalize_stream(
-                _request(model_name),
-                _model(model_name),
-                _provider_events(fixture),
-                mode,
+            sequencer.sequence(
+                compatibility.normalize_stream(
+                    _request(model_name),
+                    _model(model_name),
+                    _provider_events(fixture),
+                    mode,
+                ),
             ),
         ),
     )

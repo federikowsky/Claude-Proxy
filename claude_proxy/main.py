@@ -5,9 +5,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from claude_proxy.api.errors import install_error_handlers
+from claude_proxy.api.http_debug import install_http_debug_middleware
 from claude_proxy.api.routes.health import router as health_router
 from claude_proxy.api.routes.messages import router as messages_router
-from claude_proxy.application.policies import CompatibilityNormalizer
+from claude_proxy.application.policies import CompatibilityNormalizer, StreamEventSequencer
 from claude_proxy.application.services import MessageService
 from claude_proxy.application.sse import AnthropicResponseEncoder, AnthropicSseEncoder
 from claude_proxy.infrastructure.config import Settings, load_settings
@@ -27,6 +28,7 @@ def create_app(
     client_manager = SharedAsyncClientManager(resolved_settings, transport=transport)
     resolver = StaticModelResolver(resolved_settings)
     normalizer = CompatibilityNormalizer()
+    sequencer = StreamEventSequencer()
     sse_encoder = AnthropicSseEncoder()
     response_encoder = AnthropicResponseEncoder()
     providers = build_provider_registry(resolved_settings, client_manager)
@@ -34,6 +36,7 @@ def create_app(
         resolver=resolver,
         providers=providers,
         normalizer=normalizer,
+        sequencer=sequencer,
         sse_encoder=sse_encoder,
         response_encoder=response_encoder,
         compatibility_mode=resolved_settings.bridge.compatibility_mode,
@@ -55,6 +58,7 @@ def create_app(
     app.include_router(health_router)
     app.include_router(messages_router)
     install_error_handlers(app)
+    install_http_debug_middleware(app)
     return app
 
 

@@ -13,3 +13,9 @@ class CompatibilityMode(StrEnum):
     TRANSPARENT = "transparent"
     COMPAT = "compat"
     DEBUG = "debug"
+
+
+class ThinkingPassthroughMode(StrEnum):
+    FULL = "full"
+    NATIVE_ONLY = "native_only"
+    OFF = "off"

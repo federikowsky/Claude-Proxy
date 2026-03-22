@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, TypeAlias
 
-from claude_proxy.domain.enums import Role
+from claude_proxy.domain.enums import Role, ThinkingPassthroughMode
 
 
 JsonMap: TypeAlias = Mapping[str, Any]
@@ -115,6 +115,7 @@ class ModelInfo:
     supports_tools: bool
     supports_thinking: bool
     provider_quirks: JsonMap = field(default_factory=dict)
+    thinking_passthrough_mode: ThinkingPassthroughMode = ThinkingPassthroughMode.FULL
 
 
 @dataclass(slots=True, frozen=True)

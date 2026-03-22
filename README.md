@@ -22,6 +22,10 @@ It accepts Anthropic Messages API requests, forwards them to OpenRouter with min
   - `transparent` default, loss-minimizing
   - `compat` more aggressive suppression of non-representable client-breaking structures
   - `debug` same bridge behavior with extra diagnostics
+- applies per-model thinking passthrough policy:
+  - `full` preserve all normalized thinking blocks/deltas
+  - `native_only` preserve only Anthropic-native `source_type="thinking"`
+  - `off` suppress all thinking in egress
 - keeps one shared `httpx.AsyncClient` per process
 - parses SSE incrementally without buffering the full stream
 
@@ -47,6 +51,17 @@ export CLAUDE_PROXY__BRIDGE__COMPATIBILITY_MODE=compat
 export CLAUDE_PROXY__SERVER__PORT=8090
 ```
 
+Model example:
+
+```yaml
+models:
+  anthropic/claude-sonnet-4:
+    thinking_passthrough_mode: full
+
+  openai/gpt-4.1-mini:
+    thinking_passthrough_mode: native_only
+```
+
 ## Migration notes from V1
 
 - `stream=false` is now supported.
@@ -55,3 +70,4 @@ export CLAUDE_PROXY__SERVER__PORT=8090
 - the OpenRouter adapter now normalizes upstream payloads into canonical events/content before final Anthropic encoding.
 - thinking is no longer flattened or promoted into final answer text.
 - `bridge.compatibility_mode` replaces the old stream policy behavior.
+- `models.<name>.thinking_passthrough_mode` controls whether normalized thinking is passed through as Anthropic thinking on egress.

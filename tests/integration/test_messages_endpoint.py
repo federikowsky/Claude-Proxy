@@ -17,9 +17,28 @@ def _stream_payload() -> dict[str, object]:
     }
 
 
+def _stream_payload_nonanthropic() -> dict[str, object]:
+    return {
+        "model": "openai/gpt-4.1-mini",
+        "messages": [{"role": "user", "content": "Inspect repo"}],
+        "max_tokens": 64,
+        "stream": True,
+        "tools": [{"name": "bash", "input_schema": {"type": "object"}}],
+    }
+
+
 def _nonstream_payload() -> dict[str, object]:
     return {
         "model": "anthropic/claude-sonnet-4",
+        "messages": [{"role": "user", "content": "Inspect repo"}],
+        "max_tokens": 64,
+        "stream": False,
+    }
+
+
+def _nonstream_payload_nonanthropic() -> dict[str, object]:
+    return {
+        "model": "openai/gpt-4.1-mini",
         "messages": [{"role": "user", "content": "Inspect repo"}],
         "max_tokens": 64,
         "stream": False,
@@ -83,6 +102,60 @@ async def test_messages_endpoint_streams_structured_anthropic_sse(settings) -> N
 
 
 @pytest.mark.asyncio
+async def test_messages_endpoint_stream_native_only_suppresses_provider_reasoning_for_nonanthropic_model(settings) -> None:
+    upstream = (
+        b"event: message_start\n"
+        b'data: {"type":"message_start","message":{"id":"msg_stream","role":"assistant","model":"openai/gpt-4.1-mini","usage":{"input_tokens":4}}}\n\n'
+        b"event: content_block_start\n"
+        b'data: {"type":"content_block_start","index":0,"content_block":{"type":"reasoning","reasoning":""}}\n\n'
+        b"event: content_block_delta\n"
+        b'data: {"type":"content_block_delta","index":0,"delta":{"type":"reasoning_delta","text":"thought"}}\n\n'
+        b"event: content_block_stop\n"
+        b'data: {"type":"content_block_stop","index":0}\n\n'
+        b"event: content_block_start\n"
+        b'data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"bash","input":{}}}\n\n'
+        b"event: content_block_delta\n"
+        b'data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\\"cmd\\":\\"ls\\"}"}}\n\n'
+        b"event: content_block_stop\n"
+        b'data: {"type":"content_block_stop","index":1}\n\n'
+        b"event: content_block_start\n"
+        b'data: {"type":"content_block_start","index":2,"content_block":{"type":"text","text":""}}\n\n'
+        b"event: content_block_delta\n"
+        b'data: {"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"done"}}\n\n'
+        b"event: message_delta\n"
+        b'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":3}}\n\n'
+        b"event: message_stop\n"
+        b'data: {"type":"message_stop"}\n\n'
+    )
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            stream=MockAsyncByteStream([upstream[:61], upstream[61:173], upstream[173:]]),
+        )
+
+    app = create_app(settings, transport=httpx.MockTransport(handler))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post("/v1/messages", json=_stream_payload_nonanthropic())
+        body = await response.aread()
+
+    try:
+        assert response.status_code == 200
+        text = body.decode("utf-8")
+        assert '"type":"thinking"' not in text
+        assert '"type":"thinking_delta"' not in text
+        assert '"type":"tool_use"' in text
+        assert '"type":"input_json_delta"' in text
+        assert '"type":"text_delta"' in text
+    finally:
+        await app.state.client_manager.close()
+
+
+@pytest.mark.asyncio
 async def test_messages_endpoint_supports_nonstream_structured_response(settings) -> None:
     def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -115,6 +188,43 @@ async def test_messages_endpoint_supports_nonstream_structured_response(settings
         payload = response.json()
         assert payload["id"] == "msg_nonstream"
         assert [block["type"] for block in payload["content"]] == ["thinking", "tool_use", "text"]
+        assert payload["usage"] == {"input_tokens": 4, "output_tokens": 7}
+    finally:
+        await app.state.client_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_messages_endpoint_nonstream_native_only_suppresses_provider_reasoning_for_nonanthropic_model(settings) -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "id": "msg_nonstream",
+                "type": "message",
+                "role": "assistant",
+                "model": "openai/gpt-4.1-mini",
+                "content": [
+                    {"type": "reasoning", "reasoning": "plan"},
+                    {"type": "tool_use", "id": "toolu_1", "name": "bash", "input": {"cmd": "pwd"}},
+                    {"type": "text", "text": "done"},
+                ],
+                "stop_reason": "tool_use",
+                "stop_sequence": None,
+                "usage": {"input_tokens": 4, "output_tokens": 7},
+            },
+        )
+
+    app = create_app(settings, transport=httpx.MockTransport(handler))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post("/v1/messages", json=_nonstream_payload_nonanthropic())
+
+    try:
+        assert response.status_code == 200
+        payload = response.json()
+        assert [block["type"] for block in payload["content"]] == ["tool_use", "text"]
         assert payload["usage"] == {"input_tokens": 4, "output_tokens": 7}
     finally:
         await app.state.client_manager.close()

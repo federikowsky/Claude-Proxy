@@ -7,7 +7,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
-from claude_proxy.domain.enums import CompatibilityMode
+from claude_proxy.domain.enums import CompatibilityMode, ThinkingPassthroughMode
 from claude_proxy.domain.errors import InternalBridgeError
 from claude_proxy.jsonutil import json_loads
 
@@ -67,6 +67,7 @@ class ModelSettings(BaseModel):
     supports_nonstream: bool = True
     supports_tools: bool = True
     supports_thinking: bool = True
+    thinking_passthrough_mode: ThinkingPassthroughMode = ThinkingPassthroughMode.FULL
     provider_quirks: dict[str, Any] = Field(default_factory=dict)
 
 

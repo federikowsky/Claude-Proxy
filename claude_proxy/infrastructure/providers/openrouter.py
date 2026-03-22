@@ -128,10 +128,17 @@ class OpenRouterTranslator:
 class OpenRouterStreamNormalizer:
     def __init__(self) -> None:
         self._blocks: dict[int, ContentBlock] = {}
+        self._stream_finished: bool = False
+
+    def _emit_message_stop_once(self) -> MessageStopEvent | None:
+        if self._stream_finished:
+            return None
+        self._stream_finished = True
+        return MessageStopEvent()
 
     def normalize(self, message: SseMessage) -> CanonicalEvent | None:
         if message.data == "[DONE]":
-            return MessageStopEvent()
+            return self._emit_message_stop_once()
 
         try:
             payload = json_loads(message.data)
@@ -160,7 +167,7 @@ class OpenRouterStreamNormalizer:
                 extras=_extras(payload, {"type", "delta", "usage"}),
             )
         if event_type == "message_stop":
-            return MessageStopEvent()
+            return self._emit_message_stop_once()
         if event_type == "ping":
             return PingEvent(payload=_extras(payload, {"type"}))
         if event_type == "error":
@@ -172,6 +179,7 @@ class OpenRouterStreamNormalizer:
         return ProviderWarningEvent(message="unknown_provider_event", payload={"event_type": event_type})
 
     def _message_start(self, payload: dict[str, Any]) -> MessageStartEvent:
+        self._stream_finished = False
         message_payload = _mapping(payload.get("message"))
         response = ChatResponse(
             id=_string_or_none(message_payload.get("id")) or "",

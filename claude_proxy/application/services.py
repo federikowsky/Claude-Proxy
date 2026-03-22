@@ -24,6 +24,7 @@ class MessageService:
         resolver: ModelResolver,
         providers: Mapping[str, ModelProvider],
         normalizer: ResponseNormalizer,
+        sequencer,
         sse_encoder: SseEncoder,
         response_encoder: ResponseEncoder,
         compatibility_mode: CompatibilityMode,
@@ -33,6 +34,7 @@ class MessageService:
         self._resolver = resolver
         self._providers = providers
         self._normalizer = normalizer
+        self._sequencer = sequencer
         self._sse_encoder = sse_encoder
         self._response_encoder = response_encoder
         self._compatibility_mode = compatibility_mode
@@ -57,7 +59,7 @@ class MessageService:
             events,
             self._compatibility_mode,
         )
-        return self._sse_encoder.encode(normalized)
+        return self._sse_encoder.encode(self._sequencer.sequence(normalized))
 
     async def complete(self, request: ChatRequest) -> dict[str, object]:
         model, provider = self._resolve(request)
