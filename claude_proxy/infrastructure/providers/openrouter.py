@@ -125,6 +125,10 @@ class OpenRouterTranslator:
         payload = self.to_payload(request, model)
         payload["stream"] = False
         payload["max_tokens"] = 1
+        # This probe goes through OpenRouter's real /messages endpoint, not a native
+        # count_tokens API. Keeping Anthropic extended thinking enabled would make the
+        # probe subject to reasoning-budget validation against max_tokens and would
+        # either fail or require a much larger completion budget.
         payload.pop("thinking", None)
         return payload
 

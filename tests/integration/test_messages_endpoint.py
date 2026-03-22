@@ -47,6 +47,7 @@ def _count_tokens_payload() -> dict[str, object]:
         "messages": [{"role": "user", "content": "Inspect repo"}],
         "system": [{"type": "text", "text": "You are a bridge."}],
         "tools": [{"name": "bash", "input_schema": {"type": "object"}}],
+        "tool_choice": {"type": "tool", "name": "bash"},
         "thinking": {"type": "enabled", "budget_tokens": 2048},
     }
 
@@ -328,6 +329,7 @@ async def test_count_tokens_endpoint_uses_messages_probe_and_returns_input_token
         assert captured["json"]["stream"] is False
         assert "thinking" not in captured["json"]
         assert captured["json"]["tools"][0]["name"] == "bash"
+        assert captured["json"]["tool_choice"] == {"type": "tool", "name": "bash"}
     finally:
         await app.state.client_manager.close()
 

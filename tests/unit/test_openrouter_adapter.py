@@ -16,6 +16,7 @@ from claude_proxy.domain.models import (
     MessageStopEvent,
     ModelInfo,
     ThinkingBlock,
+    ToolChoice,
     ThinkingConfig,
     ThinkingDelta,
     ToolDefinition,
@@ -86,11 +87,16 @@ def test_translator_maps_full_request_payload() -> None:
 
 def test_translator_builds_count_tokens_probe_payload() -> None:
     translator = OpenRouterTranslator()
-    request = replace(_request(), thinking=ThinkingConfig(type="enabled", budget_tokens=2048))
+    request = replace(
+        _request(),
+        thinking=ThinkingConfig(type="enabled", budget_tokens=2048),
+        tool_choice=ToolChoice(type="tool", name="bash"),
+    )
     payload = translator.to_count_tokens_probe_payload(request, _model())
     assert payload["max_tokens"] == 1
     assert payload["stream"] is False
     assert "thinking" not in payload
+    assert payload["tool_choice"] == {"type": "tool", "name": "bash"}
     assert payload["messages"][0]["content"][0]["type"] == "tool_use"
 
 

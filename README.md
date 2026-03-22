@@ -111,16 +111,20 @@ Questo evita che Claude Code perda funzionalita legate a beta/header negotiation
 
 Alla data del 2026-03-22 l'API pubblica OpenRouter espone `POST /messages`, ma non un endpoint nativo `POST /messages/count_tokens`.
 
-Per mantenere compatibilita con Claude Code, il proxy implementa `POST /v1/messages/count_tokens` come shim OpenRouter-specifico:
+Anthropic documenta invece `POST /v1/messages/count_tokens` come endpoint nativo di token counting e mostra esempi con extended thinking, dove il conteggio include il thinking del turno assistant corrente.
+
+Per mantenere compatibilita con Claude Code, il proxy implementa comunque `POST /v1/messages/count_tokens` come shim OpenRouter-specifico:
 
 - invia upstream una richiesta `POST /messages` non-stream
 - forza `max_tokens=1`
 - restituisce al client solo `usage.input_tokens`
-- rimuove `thinking` dal probe per evitare vincoli di budget/output che non influenzano il conteggio input
+- preserva `tools` e `tool_choice`, che fanno parte dell'input strutturato da contare
+- rimuove il top-level `thinking` dal probe: su OpenRouter il probe passa da un vero `/messages`, quindi extended thinking sarebbe soggetto ai normali vincoli di reasoning budget rispetto a `max_tokens`; con `max_tokens=1` questo rende il probe fragile o invalido
 
 Limite noto:
 
 - il conteggio passa comunque da una request reale verso OpenRouter, quindi introduce un round-trip upstream aggiuntivo e puo comportare billing minimo lato completion
+- quando la request client include extended thinking, il valore restituito dal proxy e una stima best-effort e puo divergere dal `count_tokens` nativo Anthropic, che conta anche i casi con thinking
 
 ## Modalita di compatibilita
 
