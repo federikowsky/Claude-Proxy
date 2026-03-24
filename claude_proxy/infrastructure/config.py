@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
@@ -32,12 +32,38 @@ class RoutingSettings(BaseModel):
     fallback_model: str | None = None
 
 
+class RuntimeOrchestrationPolicySettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_message_from_idle: Literal["planning", "executing"] = "executing"
+    plan_exit_target: Literal["executing", "completing"] = "executing"
+    user_rejected: Literal["planning", "paused", "aborted"] = "planning"
+    permission_denied: Literal["paused", "planning", "aborted"] = "paused"
+    tool_failed: Literal["executing", "failed"] = "executing"
+    subtask_failed: Literal["orchestrating", "failed"] = "orchestrating"
+    timeout_resolution: Literal["failed", "interrupted"] = "failed"
+
+
+class RuntimePersistenceSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    backend: Literal["sqlite", "memory"] = "sqlite"
+    sqlite_path: str = "data/claude_proxy_runtime.db"
+
+
 class BridgeSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     compatibility_mode: CompatibilityMode = CompatibilityMode.TRANSPARENT
     emit_usage: bool = True
     passthrough_request_fields: tuple[str, ...] = ()
+    runtime_orchestration_enabled: bool = False
+    runtime_policies: RuntimeOrchestrationPolicySettings = Field(
+        default_factory=RuntimeOrchestrationPolicySettings,
+    )
+    runtime_persistence: RuntimePersistenceSettings = Field(
+        default_factory=RuntimePersistenceSettings,
+    )
 
 
 class ProviderSettings(BaseModel):

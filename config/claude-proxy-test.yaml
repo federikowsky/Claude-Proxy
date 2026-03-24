@@ -1,0 +1,130 @@
+server:
+  host: 127.0.0.1
+  port: 3893  # Test port to avoid interfering with main proxy on 3892
+  log_level: debug
+  request_timeout_seconds: 120
+  debug: true
+
+routing:
+  default_model: test/warn-model  # Default to a model that warns for testing
+  fallback_model: test/warn-model
+
+bridge:
+  compatibility_mode: compat
+  emit_usage: true
+  # Anthropic/client extension fields accepted by the proxy at ingress.
+  # Per-model stripping/adaptation happens later in the request_preparer.
+  passthrough_request_fields:
+    - output_config
+    - context_management
+    - provider
+
+providers:
+  openrouter:
+    enabled: true
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    connect_timeout_seconds: 10
+    read_timeout_seconds: 120
+    write_timeout_seconds: 20
+    pool_timeout_seconds: 10
+    max_connections: 100
+    max_keepalive_connections: 20
+    app_name: claude-proxy
+    app_url: null
+    debug_echo_upstream_body: false
+
+models:
+  # Model that allows ordinary tools (for baseline testing)
+  test/allow-model:
+    provider: openrouter
+    enabled: true
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: true
+    thinking_passthrough_mode: full
+    # These are the defaults, but being explicit for clarity
+    schema_normalization_policy: ALLOW
+    control_action_policy: ALLOW
+    orchestration_action_policy: ALLOW
+    generic_tool_emulation_policy: ALLOW
+
+  # Model that warns on state transitions (for WARN testing)
+  test/warn-model:
+    provider: openrouter
+    enabled: true
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: true
+    thinking_passthrough_mode: full
+    schema_normalization_policy: ALLOW
+    control_action_policy: WARN  # Warn on state transitions
+    orchestration_action_policy: WARN
+    generic_tool_emulation_policy: WARN
+
+  # Model that blocks on state transitions (for BLOCK testing)
+  test/block-model:
+    provider: openrouter
+    enabled: true
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: true
+    thinking_passthrough_mode: full
+    schema_normalization_policy: ALLOW
+    control_action_policy: BLOCK  # Block on state transitions
+    orchestration_action_policy: BLOCK
+    generic_tool_emulation_policy: BLOCK
+
+  # Model that blocks on generic tool emulation (for improper control emulation testing)
+  test/block-emulation-model:
+    provider: openrouter
+    enabled: true
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: true
+    thinking_passthrough_mode: full
+    schema_normalization_policy: ALLOW
+    control_action_policy: ALLOW
+    orchestration_action_policy: ALLOW
+    generic_tool_emulation_policy: BLOCK  # Block on generic tool emulation
+
+  # Model for testing field stripping (like stepfun)
+  test/strip-model:
+    provider: openrouter
+    enabled: true
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: true
+    thinking_passthrough_mode: off
+    unsupported_request_fields:
+      - output_config
+      - context_management
+
+  # Model that supports thinking/nemotron-like behavior
+  test/nemotron-model:
+    provider: openrouter
+    enabled: true
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: true
+    thinking_passthrough_mode: full
+    schema_normalization_policy: ALLOW
+    control_action_policy: ALLOW
+    orchestration_action_policy: ALLOW
+    generic_tool_emulation_policy: ALLOW
+
+  # A model that should work like existing working models (for regression testing)
+  anthropic/claude-sonnet-4:
+    provider: openrouter
+    enabled: true
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: true
+    thinking_passthrough_mode: full

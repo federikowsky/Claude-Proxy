@@ -43,6 +43,8 @@ def base_config() -> dict[str, Any]:
             "compatibility_mode": "transparent",
             "emit_usage": True,
             "passthrough_request_fields": ["output_config"],
+            "runtime_orchestration_enabled": False,
+            "runtime_persistence": {"backend": "memory"},
         },
         "providers": {
             "openrouter": {

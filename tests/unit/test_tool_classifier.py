@@ -40,6 +40,12 @@ class TestToolClassifierByCategory:
     def test_exit_plan_mode_is_state_control(self) -> None:
         assert self.clf.classify(_tool("exit_plan_mode")) is ToolCategory.STATE_CONTROL
 
+    def test_ask_user_is_state_control(self) -> None:
+        assert self.clf.classify(_tool("ask_user")) is ToolCategory.STATE_CONTROL
+
+    def test_permission_request_is_state_control(self) -> None:
+        assert self.clf.classify(_tool("permission_request")) is ToolCategory.STATE_CONTROL
+
     def test_task_is_orchestration(self) -> None:
         assert self.clf.classify(_tool("Task")) is ToolCategory.ORCHESTRATION
 

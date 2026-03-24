@@ -2,11 +2,21 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator, Mapping
+from dataclasses import replace
 
 from claude_proxy.application.runtime_contract import RuntimeContractEnforcer
 from claude_proxy.domain.enums import CompatibilityMode
 from claude_proxy.domain.errors import RoutingError, RuntimeContractError
-from claude_proxy.domain.models import ChatRequest, ProviderRequestContext
+from claude_proxy.domain.models import (
+    ChatRequest,
+    ContentBlockStartEvent,
+    ProviderRequestContext,
+    TextBlock,
+    ToolUseBlock,
+)
+from claude_proxy.runtime.errors import RuntimeOrchestrationError
+from claude_proxy.runtime.orchestrator import RuntimeOrchestrator, effective_runtime_session_id
+from claude_proxy.runtime.stream import runtime_orchestrate_stream
 from claude_proxy.domain.ports import (
     ModelProvider,
     ModelResolver,
@@ -32,6 +42,7 @@ class MessageService:
         response_encoder: ResponseEncoder,
         compatibility_mode: CompatibilityMode,
         contract_enforcer: RuntimeContractEnforcer | None = None,
+        runtime_orchestrator: RuntimeOrchestrator | None = None,
         debug: bool = False,
     ) -> None:
         self._resolver = resolver
@@ -43,6 +54,7 @@ class MessageService:
         self._response_encoder = response_encoder
         self._compatibility_mode = compatibility_mode
         self._contract_enforcer = contract_enforcer or RuntimeContractEnforcer()
+        self._runtime_orchestrator = runtime_orchestrator
         self._debug = debug
 
     async def stream(
@@ -68,15 +80,24 @@ class MessageService:
             events,
             self._compatibility_mode,
         )
-        enforced = self._contract_enforcer.enforce_stream(normalized, model)
-        sequenced = self._sequencer.sequence(enforced)
+        if self._runtime_orchestrator is not None:
+            sid = self._runtime_session_id(prepared_request, provider_context)
+            routed = runtime_orchestrate_stream(
+                normalized,
+                orchestrator=self._runtime_orchestrator,
+                session_id=sid,
+            )
+            sequenced = self._sequencer.sequence(routed)
+        else:
+            enforced = self._contract_enforcer.enforce_stream(normalized, model)
+            sequenced = self._sequencer.sequence(enforced)
         encoded = self._sse_encoder.encode(sequenced)
 
         async def encoded_with_stream_runtime_errors() -> AsyncIterator[bytes]:
             try:
                 async for chunk in encoded:
                     yield chunk
-            except RuntimeContractError as exc:
+            except (RuntimeContractError, RuntimeOrchestrationError) as exc:
                 # Headers may already be 200; emit the same error envelope as non-stream 422.
                 yield self._sse_encoder.format_bridge_error_sse(exc)
 
@@ -99,7 +120,34 @@ class MessageService:
                 len(prepared_request.messages),
             )
         response = await provider.complete(prepared_request, model, provider_context)
-        # Runtime contract enforcement: inspect model-emitted tool calls.
+        if self._runtime_orchestrator is not None:
+            normalized = self._normalizer.normalize_response(
+                prepared_request,
+                model,
+                response,
+                self._compatibility_mode,
+            )
+            sid = self._runtime_session_id(prepared_request, provider_context)
+            session = self._runtime_orchestrator.load_or_idle(sid)
+            session = self._runtime_orchestrator.on_user_turn_start(session)
+            try:
+                new_blocks: list[object] = []
+                for i, block in enumerate(normalized.content):
+                    if isinstance(block, ToolUseBlock):
+                        ev = ContentBlockStartEvent(index=i, block=block)
+                        _session, out = self._runtime_orchestrator.process_tool_block_start(session, ev)
+                        session = _session
+                        if out is not None:
+                            new_blocks.append(block)
+                    else:
+                        if isinstance(block, TextBlock):
+                            session = self._runtime_orchestrator.on_model_text_block_started(session)
+                        new_blocks.append(block)
+                normalized = replace(normalized, content=tuple(new_blocks))
+                return self._response_encoder.encode(normalized)
+            finally:
+                self._runtime_orchestrator.log_upstream_turn_ended(session)
+
         enforced_response = self._contract_enforcer.enforce_response(response, model)
         normalized = self._normalizer.normalize_response(
             prepared_request,
@@ -134,6 +182,17 @@ class MessageService:
         if provider is None:
             raise RoutingError(f"provider '{model.provider}' is not configured")
         return model, provider
+
+    @staticmethod
+    def _runtime_session_id(request: ChatRequest, ctx: ProviderRequestContext | None) -> str:
+        header_sid: str | None = None
+        if ctx is not None:
+            for key, value in ctx.headers:
+                if key.lower() == "x-claude-proxy-runtime-session":
+                    header_sid = value
+                    break
+        md = dict(request.metadata) if request.metadata is not None else None
+        return effective_runtime_session_id(metadata=md, header_session_id=header_sid)
 
     def _validate_request(self, request: ChatRequest, model) -> None:
         if request.stream and not model.supports_stream:
