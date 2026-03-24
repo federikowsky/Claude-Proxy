@@ -44,20 +44,20 @@ def create_app(
     providers = build_provider_registry(resolved_settings, client_manager)
     runtime_orchestrator = None
     runtime_sqlite: SqliteRuntimeStores | None = None
+    repair_policies = policies_from_settings(resolved_settings.bridge.runtime_policies)
     if resolved_settings.bridge.runtime_orchestration_enabled:
-        policies_obj = policies_from_settings(resolved_settings.bridge.runtime_policies)
         if resolved_settings.bridge.runtime_persistence.backend == "sqlite":
             runtime_sqlite = SqliteRuntimeStores(resolved_settings.bridge.runtime_persistence.sqlite_path)
             runtime_orchestrator = RuntimeOrchestrator(
                 store=runtime_sqlite.session_store,
                 log=runtime_sqlite.event_log,
-                policies=policies_obj,
+                policies=repair_policies,
             )
         else:
             runtime_orchestrator = RuntimeOrchestrator(
                 store=InMemoryRuntimeSessionStore(),
                 log=InMemoryRuntimeEventLog(),
-                policies=policies_obj,
+                policies=repair_policies,
             )
     message_service = MessageService(
         resolver=resolver,
@@ -69,6 +69,7 @@ def create_app(
         response_encoder=response_encoder,
         compatibility_mode=resolved_settings.bridge.compatibility_mode,
         runtime_orchestrator=runtime_orchestrator,
+        outbound_repair_policies=repair_policies,
         debug=resolved_settings.server.debug,
     )
 
@@ -92,7 +93,7 @@ def create_app(
     app.include_router(messages_router)
     app.include_router(runtime_control_router)
     install_error_handlers(app)
-    # install_http_debug_middleware(app)
+    install_http_debug_middleware(app)
     return app
 
 

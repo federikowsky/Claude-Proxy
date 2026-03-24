@@ -15,7 +15,12 @@ from claude_proxy.domain.models import (
     ToolUseBlock,
 )
 from claude_proxy.capabilities.text_control import apply_text_control_policy
+from claude_proxy.capabilities.tool_use_prepare import (
+    repair_chat_response_tool_blocks,
+    repair_stream_tool_blocks,
+)
 from claude_proxy.runtime.errors import RuntimeOrchestrationError
+from claude_proxy.runtime.policies import RuntimeOrchestrationPolicies
 from claude_proxy.runtime.orchestrator import RuntimeOrchestrator, effective_runtime_session_id
 from claude_proxy.runtime.stream import runtime_orchestrate_stream
 from claude_proxy.domain.ports import (
@@ -44,6 +49,7 @@ class MessageService:
         compatibility_mode: CompatibilityMode,
         contract_enforcer: RuntimeContractEnforcer | None = None,
         runtime_orchestrator: RuntimeOrchestrator | None = None,
+        outbound_repair_policies: RuntimeOrchestrationPolicies | None = None,
         debug: bool = False,
     ) -> None:
         self._resolver = resolver
@@ -56,6 +62,7 @@ class MessageService:
         self._compatibility_mode = compatibility_mode
         self._contract_enforcer = contract_enforcer or RuntimeContractEnforcer()
         self._runtime_orchestrator = runtime_orchestrator
+        self._repair_policies = outbound_repair_policies or RuntimeOrchestrationPolicies()
         self._debug = debug
 
     async def stream(
@@ -90,7 +97,8 @@ class MessageService:
             )
             sequenced = self._sequencer.sequence(routed)
         else:
-            enforced = self._contract_enforcer.enforce_stream(normalized, model)
+            repaired = repair_stream_tool_blocks(normalized, policies=self._repair_policies)
+            enforced = self._contract_enforcer.enforce_stream(repaired, model)
             sequenced = self._sequencer.sequence(enforced)
         encoded = self._sse_encoder.encode(sequenced)
 
@@ -121,13 +129,19 @@ class MessageService:
                 len(prepared_request.messages),
             )
         response = await provider.complete(prepared_request, model, provider_context)
+        normalized = self._normalizer.normalize_response(
+            prepared_request,
+            model,
+            response,
+            self._compatibility_mode,
+        )
+        policies = (
+            self._runtime_orchestrator.policies
+            if self._runtime_orchestrator is not None
+            else self._repair_policies
+        )
+        normalized = repair_chat_response_tool_blocks(normalized, policies=policies)
         if self._runtime_orchestrator is not None:
-            normalized = self._normalizer.normalize_response(
-                prepared_request,
-                model,
-                response,
-                self._compatibility_mode,
-            )
             sid = self._runtime_session_id(prepared_request, provider_context)
             session = self._runtime_orchestrator.load_or_idle(sid)
             session = self._runtime_orchestrator.on_user_turn_start(session)
@@ -139,7 +153,7 @@ class MessageService:
                         _session, out = self._runtime_orchestrator.process_tool_block_start(session, ev)
                         session = _session
                         if out is not None:
-                            new_blocks.append(block)
+                            new_blocks.append(out.block)
                     else:
                         if isinstance(block, TextBlock):
                             apply_text_control_policy(
@@ -149,17 +163,12 @@ class MessageService:
                             session = self._runtime_orchestrator.on_model_text_block_started(session)
                         new_blocks.append(block)
                 normalized = replace(normalized, content=tuple(new_blocks))
+                self._contract_enforcer.enforce_response(normalized, model)
                 return self._response_encoder.encode(normalized)
             finally:
                 self._runtime_orchestrator.log_upstream_turn_ended(session)
 
-        enforced_response = self._contract_enforcer.enforce_response(response, model)
-        normalized = self._normalizer.normalize_response(
-            prepared_request,
-            model,
-            enforced_response,
-            self._compatibility_mode,
-        )
+        self._contract_enforcer.enforce_response(normalized, model)
         return self._response_encoder.encode(normalized)
 
     async def count_tokens(

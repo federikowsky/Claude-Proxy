@@ -101,7 +101,7 @@ def normalize_ask_user_question_input(
         out["answers"] = None
 
     if repairs:
-        _logger.info(
+        _logger.debug(
             "tool_input_repaired tool=AskUserQuestion repairs=%s",
             ",".join(repairs),
             extra={"extra_fields": {"tool": "AskUserQuestion", "repairs": repairs}},
@@ -130,7 +130,7 @@ def normalize_exit_plan_mode_input(
             out["plan"] = "" if plan is None else str(plan)
             repairs.append("plan_coerced_to_string")
     if repairs:
-        _logger.info(
+        _logger.debug(
             "tool_input_repaired tool=ExitPlanMode repairs=%s",
             ",".join(repairs),
             extra={"extra_fields": {"tool": "ExitPlanMode", "repairs": repairs}},
