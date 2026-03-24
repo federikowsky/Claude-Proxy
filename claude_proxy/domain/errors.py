@@ -78,3 +78,25 @@ class UpstreamTimeoutError(BridgeError):
 class InternalBridgeError(BridgeError):
     status_code = 500
     error_type = "internal_bridge_error"
+
+
+class ProviderBoundaryError(BridgeError):
+    """Raised when a provider-boundary invariant is violated before payload emission.
+
+    This is a hard failure: the system cannot safely emit a payload that would
+    violate the contract the provider expects.
+    """
+
+    status_code = 500
+    error_type = "provider_boundary_error"
+
+
+class RuntimeContractError(BridgeError):
+    """Raised when the runtime contract enforcer detects an invalid or ambiguous action.
+
+    This represents a hard failure: the proxy detected that a model-emitted action
+    violates the runtime contract and cannot be safely forwarded or interpreted.
+    """
+
+    status_code = 422
+    error_type = "runtime_contract_error"

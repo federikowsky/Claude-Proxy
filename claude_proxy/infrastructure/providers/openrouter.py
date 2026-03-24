@@ -7,7 +7,13 @@ from typing import Any
 
 import httpx
 
-from claude_proxy.domain.errors import ProviderAuthError, ProviderHttpError, ProviderProtocolError, UpstreamTimeoutError
+from claude_proxy.domain.errors import (
+    ProviderAuthError,
+    ProviderBoundaryError,
+    ProviderHttpError,
+    ProviderProtocolError,
+    UpstreamTimeoutError,
+)
 from claude_proxy.domain.models import (
     CanonicalEvent,
     ChatRequest,
@@ -89,6 +95,18 @@ class IncrementalSseParser:
 
 class OpenRouterTranslator:
     def to_payload(self, request: ChatRequest, model: ModelInfo) -> dict[str, object]:
+        # Provider-boundary schema invariant: every tool must have a valid schema.
+        # This is a hard failure — the request_preparer should have normalised all
+        # schemas already; a violation here indicates a bug in the pipeline.
+        for tool in request.tools:
+            schema = tool.input_schema
+            if not isinstance(schema, Mapping) or not schema:
+                raise ProviderBoundaryError(
+                    f"provider boundary invariant: tool '{tool.name}' has invalid "
+                    f"input_schema — cannot emit to provider",
+                    details={"tool": tool.name, "schema": repr(schema)},
+                )
+
         payload: dict[str, object] = {
             "model": model.name,
             "messages": [
@@ -120,6 +138,7 @@ class OpenRouterTranslator:
         for key, value in request.extensions.items():
             payload[key] = value
         return payload
+
 
     def to_count_tokens_probe_payload(self, request: ChatRequest, model: ModelInfo) -> dict[str, object]:
         payload = self.to_payload(request, model)

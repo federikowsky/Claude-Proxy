@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, TypeAlias
 
-from claude_proxy.domain.enums import Role, ThinkingPassthroughMode
+from claude_proxy.domain.enums import ActionPolicy, Role, ThinkingPassthroughMode, ToolCategory
 
 
 JsonMap: TypeAlias = Mapping[str, Any]
@@ -69,6 +69,9 @@ class ToolDefinition:
     description: str | None
     input_schema: JsonMap
     extras: JsonMap = field(default_factory=dict)
+    # Set by ToolClassifier after classification; defaults to ORDINARY so that
+    # existing code that creates ToolDefinition without a classifier still works.
+    category: ToolCategory = ToolCategory.ORDINARY
 
 
 @dataclass(slots=True, frozen=True)
@@ -119,6 +122,15 @@ class ModelInfo:
     supports_thinking: bool
     thinking_passthrough_mode: ThinkingPassthroughMode = ThinkingPassthroughMode.FULL
     unsupported_request_fields: tuple[str, ...] = ()
+    # ---- Capability / policy fields introduced by the runtime bridge ----
+    # Policy for normalising tool input_schema before provider boundary.
+    schema_normalization_policy: ActionPolicy = ActionPolicy.ALLOW
+    # Policy for handling detected state/control transition actions.
+    control_action_policy: ActionPolicy = ActionPolicy.WARN
+    # Policy for handling detected orchestration actions.
+    orchestration_action_policy: ActionPolicy = ActionPolicy.WARN
+    # Policy for handling detected generic-tool emulation of runtime semantics.
+    generic_tool_emulation_policy: ActionPolicy = ActionPolicy.WARN
 
 
 @dataclass(slots=True, frozen=True)

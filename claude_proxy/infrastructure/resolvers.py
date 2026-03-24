@@ -26,4 +26,8 @@ class StaticModelResolver:
             supports_thinking=config.supports_thinking,
             thinking_passthrough_mode=config.thinking_passthrough_mode,
             unsupported_request_fields=config.unsupported_request_fields,
+            schema_normalization_policy=config.schema_normalization_policy,
+            control_action_policy=config.control_action_policy,
+            orchestration_action_policy=config.orchestration_action_policy,
+            generic_tool_emulation_policy=config.generic_tool_emulation_policy,
         )

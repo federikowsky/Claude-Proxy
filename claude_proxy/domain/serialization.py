@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -25,6 +26,129 @@ from claude_proxy.domain.models import (
     UnknownDelta,
     Usage,
 )
+
+_logger = logging.getLogger("claude_proxy.serialization")
+
+# ---------------------------------------------------------------------------
+# Fallback object schema used whenever a tool definition has a missing or
+# invalid input_schema.  A single canonical constant avoids repeated dict
+# construction and makes intent explicit.
+# ---------------------------------------------------------------------------
+_FALLBACK_OBJECT_SCHEMA: dict[str, Any] = {"type": "object", "properties": {}}
+
+
+def normalize_tool_schema(
+    schema: Any,
+    *,
+    tool_name: str = "<unknown>",
+) -> dict[str, Any]:
+    """Return a deterministically normalised copy of *schema* suitable for provider emission.
+
+    Normalisation rules (applied in order):
+
+    1. None / missing              → fallback object schema  (``schema_missing``)
+    2. Non-mapping                 → fallback object schema  (``schema_invalid_type``)
+    3. Empty mapping               → fallback object schema  (``schema_empty``)
+    4. Mapping with no ``type`` key:
+       a. Has ``properties`` or ``required``
+          → inject ``type: object``  (``schema_type_injected``)
+       b. Has neither (arbitrary schema with no type hint)
+          → inject ``type: object`` + ``properties: {}``  (``schema_type_properties_injected``)
+    5. ``type == "object"`` (or just injected):
+       - no ``properties`` key → inject empty ``properties: {}``  (``schema_properties_injected``)
+       - ``required`` non-list  → strip  (``schema_required_sanitized``)
+       - ``required`` with non-string items → filter  (``schema_required_filtered``)
+    6. Preserve extra keys in all cases.
+
+    Always returns a fresh plain ``dict`` — never the original Mapping reference.
+    """
+    # Rules 1-3: missing, non-mapping, or empty → fallback
+    if schema is None:
+        _logger.debug(
+            "tool_schema_repair tool=%s repair=schema_missing",
+            tool_name,
+            extra={"extra_fields": {"tool": tool_name, "repair": "schema_missing"}},
+        )
+        return dict(_FALLBACK_OBJECT_SCHEMA)
+
+    if not isinstance(schema, Mapping):
+        _logger.debug(
+            "tool_schema_repair tool=%s repair=schema_invalid_type actual_type=%s",
+            tool_name,
+            type(schema).__name__,
+            extra={"extra_fields": {"tool": tool_name, "repair": "schema_invalid_type"}},
+        )
+        return dict(_FALLBACK_OBJECT_SCHEMA)
+
+    if not schema:
+        _logger.debug(
+            "tool_schema_repair tool=%s repair=schema_empty",
+            tool_name,
+            extra={"extra_fields": {"tool": tool_name, "repair": "schema_empty"}},
+        )
+        return dict(_FALLBACK_OBJECT_SCHEMA)
+
+    # Work on a mutable shallow copy so we never mutate the original.
+    result: dict[str, Any] = dict(schema)
+
+    # Rule 4: no explicit type key
+    if "type" not in result:
+        if "properties" in result or "required" in result:
+            # 4a: object-like hints
+            result["type"] = "object"
+            _logger.debug(
+                "tool_schema_repair tool=%s repair=schema_type_injected",
+                tool_name,
+                extra={"extra_fields": {"tool": tool_name, "repair": "schema_type_injected"}},
+            )
+        else:
+            # 4b: no hints at all → treat as empty object schema
+            result["type"] = "object"
+            result.setdefault("properties", {})
+            _logger.debug(
+                "tool_schema_repair tool=%s repair=schema_type_properties_injected",
+                tool_name,
+                extra={"extra_fields": {"tool": tool_name, "repair": "schema_type_properties_injected"}},
+            )
+
+    schema_type = result.get("type")
+
+    # Rule 5: object-type specific normalisation
+    if schema_type == "object":
+        if "properties" not in result:
+            result["properties"] = {}
+            _logger.debug(
+                "tool_schema_repair tool=%s repair=schema_properties_injected",
+                tool_name,
+                extra={"extra_fields": {"tool": tool_name, "repair": "schema_properties_injected"}},
+            )
+
+        if "required" in result:
+            req = result["required"]
+            if not isinstance(req, list):
+                del result["required"]
+                _logger.debug(
+                    "tool_schema_repair tool=%s repair=schema_required_sanitized",
+                    tool_name,
+                    extra={"extra_fields": {"tool": tool_name, "repair": "schema_required_sanitized"}},
+                )
+            else:
+                filtered = [item for item in req if isinstance(item, str)]
+                if len(filtered) != len(req):
+                    result["required"] = filtered
+                    _logger.debug(
+                        "tool_schema_repair tool=%s repair=schema_required_filtered removed=%d",
+                        tool_name,
+                        len(req) - len(filtered),
+                        extra={"extra_fields": {"tool": tool_name, "repair": "schema_required_filtered"}},
+                    )
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Existing serialisation helpers — unchanged
+# ---------------------------------------------------------------------------
 
 
 def message_from_payload(payload: Mapping[str, Any], *, strict: bool) -> Message:

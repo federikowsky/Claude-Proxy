@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Callable
 from uuid import uuid4
 
+from claude_proxy.domain.errors import BridgeError
 from claude_proxy.domain.models import (
     CanonicalEvent,
     ChatResponse,
@@ -26,6 +27,11 @@ def _sse_frame(event: str, payload: dict[str, object]) -> bytes:
 class AnthropicSseEncoder:
     def __init__(self, message_id_factory: Callable[[], str] | None = None) -> None:
         self._message_id_factory = message_id_factory or (lambda: f"msg_{uuid4().hex}")
+
+    @staticmethod
+    def format_bridge_error_sse(err: BridgeError) -> bytes:
+        """Single SSE frame matching the JSON error envelope used for non-stream responses."""
+        return _sse_frame("error", err.to_payload())
 
     async def encode(self, events: AsyncIterator[CanonicalEvent]) -> AsyncIterator[bytes]:
         async for event in events:

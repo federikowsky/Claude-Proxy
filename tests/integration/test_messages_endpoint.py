@@ -12,6 +12,56 @@ from claude_proxy.main import create_app
 from tests.conftest import MockAsyncByteStream, base_config
 
 
+def _settings_openai_mini_with_policies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    control_action_policy: str | None = None,
+    generic_tool_emulation_policy: str | None = None,
+) -> object:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
+    cfg = base_config()
+    mini = cfg["models"]["openai/gpt-4.1-mini"]
+    if control_action_policy is not None:
+        mini["control_action_policy"] = control_action_policy
+    if generic_tool_emulation_policy is not None:
+        mini["generic_tool_emulation_policy"] = generic_tool_emulation_policy
+    config_path = tmp_path / "config.yaml"
+    with config_path.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(cfg, handle, sort_keys=False)
+    return load_settings(config_path)
+
+
+def _sse_todowrite_tool_stream(*, model: str = "openai/gpt-4.1-mini") -> bytes:
+    """Minimal upstream OpenRouter-style SSE ending with a TodoWrite tool block (no [DONE] required)."""
+    return (
+        b'event: message_start\n'
+        b'data: {"type":"message_start","message":{"id":"msg_u","role":"assistant","model":"'
+        + model.encode("utf-8")
+        + b'","usage":{"input_tokens":4,"output_tokens":0}}}\n\n'
+        b'event: content_block_start\n'
+        b'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"tu_1","name":"TodoWrite","input":{"todos":[]}}}\n\n'
+    )
+
+
+def _sse_bash_tool_stream(*, command: str, model: str = "openai/gpt-4.1-mini") -> bytes:
+    cmd_json = json.dumps(command)
+    return (
+        b'event: message_start\n'
+        b'data: {"type":"message_start","message":{"id":"msg_u","role":"assistant","model":"'
+        + model.encode("utf-8")
+        + b'","usage":{"input_tokens":4,"output_tokens":0}}}\n\n'
+        b'event: content_block_start\n'
+        b'data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"tu_1","name":"bash","input":{"command":'
+        + cmd_json.encode("utf-8")
+        + b'}}}\n\n'
+        b'event: content_block_stop\n'
+        b'data: {"type":"content_block_stop","index":0}\n\n'
+        b'event: message_stop\n'
+        b'data: {"type":"message_stop"}\n\n'
+    )
+
+
 def _stream_payload() -> dict[str, object]:
     return {
         "model": "anthropic/claude-sonnet-4",
@@ -552,5 +602,189 @@ async def test_messages_endpoint_maps_upstream_rate_limit_to_429_in_stream(setti
         assert payload["message"] == "model unavailable"
         assert payload["provider"] == "openrouter"
         assert payload["upstream_status"] == 429
+    finally:
+        await app.state.client_manager.close()
+
+
+# ---------------------------------------------------------------------------
+# Streaming runtime contract (MessageService.stream + enforce_stream path)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_stream_runtime_contract_blocks_todowrite_before_tool_sse(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BLOCK policy must stop before emitting client content_block_start for the tool."""
+    settings = _settings_openai_mini_with_policies(tmp_path, monkeypatch, control_action_policy="block")
+    upstream = _sse_todowrite_tool_stream()
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        chunks = [upstream[: max(1, len(upstream) // 2)], upstream[len(upstream) // 2 :]]
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            stream=MockAsyncByteStream(chunks),
+        )
+
+    app = create_app(settings, transport=httpx.MockTransport(handler))
+    payload = {
+        "model": "openai/gpt-4.1-mini",
+        "messages": [{"role": "user", "content": "todos"}],
+        "max_tokens": 64,
+        "stream": True,
+        "tools": [{"name": "TodoWrite", "input_schema": {"type": "object", "properties": {}}}],
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post("/v1/messages", json=payload)
+        body = (await response.aread()).decode("utf-8")
+
+    try:
+        assert response.status_code == 200
+        assert "content_block_start" not in body
+        assert "runtime_contract_error" in body
+        assert "TodoWrite" in body
+    finally:
+        await app.state.client_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_stream_runtime_contract_allows_ordinary_bash_under_generic_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _settings_openai_mini_with_policies(tmp_path, monkeypatch, generic_tool_emulation_policy="block")
+    upstream = _sse_bash_tool_stream(command="ls -la /tmp")
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            stream=MockAsyncByteStream([upstream[:60], upstream[60:120], upstream[120:]]),
+        )
+
+    app = create_app(settings, transport=httpx.MockTransport(handler))
+    payload = {
+        "model": "openai/gpt-4.1-mini",
+        "messages": [{"role": "user", "content": "list"}],
+        "max_tokens": 64,
+        "stream": True,
+        "tools": [{"name": "bash", "input_schema": {"type": "object", "properties": {}}}],
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post("/v1/messages", json=payload)
+        body = (await response.aread()).decode("utf-8")
+
+    try:
+        assert response.status_code == 200
+        assert "content_block_start" in body
+        assert '"type":"tool_use"' in body
+        assert "runtime_contract_error" not in body
+    finally:
+        await app.state.client_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_stream_runtime_contract_warn_todowrite_passes_through(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _settings_openai_mini_with_policies(tmp_path, monkeypatch, control_action_policy="warn")
+    upstream = (
+        _sse_todowrite_tool_stream()
+        + b'event: content_block_stop\n'
+        + b'data: {"type":"content_block_stop","index":0}\n\n'
+        + b'event: message_stop\n'
+        + b'data: {"type":"message_stop"}\n\n'
+    )
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            stream=MockAsyncByteStream([upstream]),
+        )
+
+    app = create_app(settings, transport=httpx.MockTransport(handler))
+    payload = {
+        "model": "openai/gpt-4.1-mini",
+        "messages": [{"role": "user", "content": "todos"}],
+        "max_tokens": 64,
+        "stream": True,
+        "tools": [{"name": "TodoWrite", "input_schema": {"type": "object", "properties": {}}}],
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post("/v1/messages", json=payload)
+        body = (await response.aread()).decode("utf-8")
+
+    try:
+        assert response.status_code == 200
+        assert "content_block_start" in body
+        assert '"name":"TodoWrite"' in body
+        assert "runtime_contract_error" not in body
+    finally:
+        await app.state.client_manager.close()
+
+
+@pytest.mark.asyncio
+async def test_stream_text_block_unaffected_by_strict_policies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-tool content blocks must pass even when all runtime policies are strict."""
+    settings = _settings_openai_mini_with_policies(
+        tmp_path,
+        monkeypatch,
+        control_action_policy="block",
+        generic_tool_emulation_policy="block",
+    )
+    upstream = (
+        b'event: message_start\n'
+        b'data: {"type":"message_start","message":{"id":"msg_u","role":"assistant","model":"openai/gpt-4.1-mini","usage":{"input_tokens":1,"output_tokens":0}}}\n\n'
+        b'event: content_block_start\n'
+        b'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n'
+        b'event: content_block_delta\n'
+        b'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}\n\n'
+        b'event: content_block_stop\n'
+        b'data: {"type":"content_block_stop","index":0}\n\n'
+        b'event: message_stop\n'
+        b'data: {"type":"message_stop"}\n\n'
+    )
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            stream=MockAsyncByteStream([upstream[:100], upstream[100:]]),
+        )
+
+    app = create_app(settings, transport=httpx.MockTransport(handler))
+    payload = {
+        "model": "openai/gpt-4.1-mini",
+        "messages": [{"role": "user", "content": "hello"}],
+        "max_tokens": 64,
+        "stream": True,
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post("/v1/messages", json=payload)
+        body = (await response.aread()).decode("utf-8")
+
+    try:
+        assert response.status_code == 200
+        assert "text_delta" in body
+        assert "runtime_contract_error" not in body
     finally:
         await app.state.client_manager.close()
