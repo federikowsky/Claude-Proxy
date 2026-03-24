@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l /Users/federicofilippi/Desktop/MyProj/Claude-Proxy/.claude/worktrees/agent-a25f2e57/tests/unit/*.py /Users/federicofilippi/Desktop/MyProj/Claude-Proxy/.claude/worktrees/agent-a25f2e57/tests/integration/*.py /Users/federicofilippi/Desktop/MyProj/Claude-Proxy/.claude/worktrees/agent-a25f2e57/tests/golden/*.py)",
+      "Bash(grep \"\\\\.py$\")",
+      "Bash(curl -s https://api.minimax.chat/v1/text/chatcompletion_pro?model=minimax-m2.5-free -H 'Content-Type: application/json' -d '{\"\"\"\"messages\"\"\"\":[{\"\"\"\"role\"\"\"\":\"\"\"\"system\"\"\"\",\"\"\"\"content\"\"\"\":\"\"\"\"You are a helpful assistant.\"\"\"\"},{\"\"\"\"role\"\"\"\":\"\"\"\"user\"\"\"\",\"\"\"\"content\"\"\"\":\"\"\"\"What are the official benchmark scores for minimax-m2.5? Include MMLU, HumanEval, MBPP, MATH, and other popular benchmarks.\"\"\"\"}]}')",
+      "WebSearch",
+      "Bash(curl -s http://127.0.0.1:3892/health)",
+      "Bash(env)",
+      "Bash(pytest -q)",
+      "Bash(curl -s http://127.0.0.1:3893/health)",
+      "Bash(pkill -f claude_proxy)",
+      "Bash(curl -s http://127.0.0.1:3896/health)"
+    ]
+  }
+}
