@@ -3,8 +3,9 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator, Mapping
 
+from claude_proxy.application.runtime_contract import RuntimeContractEnforcer
 from claude_proxy.domain.enums import CompatibilityMode
-from claude_proxy.domain.errors import RoutingError
+from claude_proxy.domain.errors import RoutingError, RuntimeContractError
 from claude_proxy.domain.models import ChatRequest, ProviderRequestContext
 from claude_proxy.domain.ports import (
     ModelProvider,
@@ -30,6 +31,7 @@ class MessageService:
         sse_encoder: SseEncoder,
         response_encoder: ResponseEncoder,
         compatibility_mode: CompatibilityMode,
+        contract_enforcer: RuntimeContractEnforcer | None = None,
         debug: bool = False,
     ) -> None:
         self._resolver = resolver
@@ -40,6 +42,7 @@ class MessageService:
         self._sse_encoder = sse_encoder
         self._response_encoder = response_encoder
         self._compatibility_mode = compatibility_mode
+        self._contract_enforcer = contract_enforcer or RuntimeContractEnforcer()
         self._debug = debug
 
     async def stream(
@@ -65,7 +68,19 @@ class MessageService:
             events,
             self._compatibility_mode,
         )
-        return self._sse_encoder.encode(self._sequencer.sequence(normalized))
+        enforced = self._contract_enforcer.enforce_stream(normalized, model)
+        sequenced = self._sequencer.sequence(enforced)
+        encoded = self._sse_encoder.encode(sequenced)
+
+        async def encoded_with_stream_runtime_errors() -> AsyncIterator[bytes]:
+            try:
+                async for chunk in encoded:
+                    yield chunk
+            except RuntimeContractError as exc:
+                # Headers may already be 200; emit the same error envelope as non-stream 422.
+                yield self._sse_encoder.format_bridge_error_sse(exc)
+
+        return encoded_with_stream_runtime_errors()
 
     async def complete(
         self,
@@ -84,10 +99,12 @@ class MessageService:
                 len(prepared_request.messages),
             )
         response = await provider.complete(prepared_request, model, provider_context)
+        # Runtime contract enforcement: inspect model-emitted tool calls.
+        enforced_response = self._contract_enforcer.enforce_response(response, model)
         normalized = self._normalizer.normalize_response(
             prepared_request,
             model,
-            response,
+            enforced_response,
             self._compatibility_mode,
         )
         return self._response_encoder.encode(normalized)

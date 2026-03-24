@@ -7,7 +7,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
-from claude_proxy.domain.enums import CompatibilityMode, ThinkingPassthroughMode
+from claude_proxy.domain.enums import ActionPolicy, CompatibilityMode, ThinkingPassthroughMode
 from claude_proxy.domain.errors import InternalBridgeError
 from claude_proxy.jsonutil import json_loads
 
@@ -69,6 +69,11 @@ class ModelSettings(BaseModel):
     supports_thinking: bool = True
     thinking_passthrough_mode: ThinkingPassthroughMode = ThinkingPassthroughMode.FULL
     unsupported_request_fields: tuple[str, ...] = ()
+    # Runtime bridge capability policies — defaults preserve existing behaviour.
+    schema_normalization_policy: ActionPolicy = ActionPolicy.ALLOW
+    control_action_policy: ActionPolicy = ActionPolicy.WARN
+    orchestration_action_policy: ActionPolicy = ActionPolicy.WARN
+    generic_tool_emulation_policy: ActionPolicy = ActionPolicy.WARN
 
 
 class Settings(BaseModel):
