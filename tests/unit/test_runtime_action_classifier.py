@@ -44,6 +44,15 @@ class TestRuntimeActionClassifierStateControl:
         assert action.tool_category is ToolCategory.STATE_CONTROL
 
 
+class TestRuntimeActionClassifierMcp:
+    clf = RuntimeActionClassifier()
+
+    def test_mcp_style_tool_is_tool_call(self) -> None:
+        action = self.clf.classify(_block("mcp__srv__do_thing", {}))
+        assert action.action_type is RuntimeActionType.TOOL_CALL
+        assert action.tool_category is ToolCategory.MCP
+
+
 class TestRuntimeActionClassifierOrchestration:
     clf = RuntimeActionClassifier()
 

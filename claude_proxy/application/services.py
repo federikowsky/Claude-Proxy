@@ -14,6 +14,7 @@ from claude_proxy.domain.models import (
     TextBlock,
     ToolUseBlock,
 )
+from claude_proxy.capabilities.text_control import apply_text_control_policy
 from claude_proxy.runtime.errors import RuntimeOrchestrationError
 from claude_proxy.runtime.orchestrator import RuntimeOrchestrator, effective_runtime_session_id
 from claude_proxy.runtime.stream import runtime_orchestrate_stream
@@ -141,6 +142,10 @@ class MessageService:
                             new_blocks.append(block)
                     else:
                         if isinstance(block, TextBlock):
+                            apply_text_control_policy(
+                                text=block.text,
+                                policy=self._runtime_orchestrator.policies.text_control_attempt_policy,
+                            )
                             session = self._runtime_orchestrator.on_model_text_block_started(session)
                         new_blocks.append(block)
                 normalized = replace(normalized, content=tuple(new_blocks))

@@ -1,37 +1,34 @@
-"""Map model artifacts to normalized actions and runtime event kinds (deterministic registry)."""
+"""Map model artifacts to normalized actions and runtime event kinds (registry-driven)."""
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
-from claude_proxy.application.runtime_actions import RuntimeAction, RuntimeActionClassifier
+from claude_proxy.application.runtime_actions import RuntimeActionClassifier
+from claude_proxy.capabilities.registry import get_capability_registry
+from claude_proxy.capabilities.signals import ToolUseSignalContext
 from claude_proxy.domain.enums import RuntimeActionType
 from claude_proxy.domain.models import TextBlock, ToolUseBlock
 from claude_proxy.runtime.actions import NormalizedRuntimeAction
 from claude_proxy.runtime.events import RuntimeEventKind
 
-# Explicit control-tool → model-derived event mapping (no free-form inference).
-_ABORT_TOOL_NAMES: frozenset[str] = frozenset(
-    {
-        "abort",
-        "abort_session",
-        "session_abort",
-        "end_session",
-        "kill_session",
-        "cancel_session",
-    }
-)
+_logger = logging.getLogger("claude_proxy.runtime.classifier")
 
-_CONTROL_TOOL_EVENTS: dict[str, RuntimeEventKind] = {
-    "exit_plan_mode": RuntimeEventKind.MODEL_EXIT_PLAN_PROPOSED,
-    "enter_plan_mode": RuntimeEventKind.MODEL_ENTER_PLAN_PROPOSED,
-    "plan_mode": RuntimeEventKind.MODEL_ENTER_PLAN_PROPOSED,
-    "ask_user": RuntimeEventKind.MODEL_REQUEST_APPROVAL_PROPOSED,
-    "approval": RuntimeEventKind.MODEL_REQUEST_APPROVAL_PROPOSED,
-    "request_permission": RuntimeEventKind.MODEL_REQUEST_PERMISSION_PROPOSED,
-    "permission_request": RuntimeEventKind.MODEL_REQUEST_PERMISSION_PROPOSED,
-}
+
+def _log_multisignal(block: ToolUseBlock, ctx: ToolUseSignalContext | None) -> None:
+    if ctx is None:
+        return
+    _logger.debug(
+        "model_tool_classify context=%s",
+        {
+            "tool": block.name,
+            "delivery": ctx.delivery,
+            "origin": ctx.origin,
+            "session_state": ctx.session_state,
+        },
+    )
 
 
 @dataclass(slots=True, frozen=True)
@@ -48,18 +45,34 @@ class RuntimeModelClassifier:
     def __init__(self, base: RuntimeActionClassifier | None = None) -> None:
         self._base = base or RuntimeActionClassifier()
 
-    def classify_tool_use(self, block: ToolUseBlock) -> ModelClassification:
+    def classify_tool_use(
+        self,
+        block: ToolUseBlock,
+        *,
+        signal_context: ToolUseSignalContext | None = None,
+    ) -> ModelClassification:
+        _log_multisignal(block, signal_context)
+        reg = get_capability_registry()
         name_lower = block.name.lower()
         payload: dict[str, Any] = {
             "tool_use_id": block.id,
             "tool_name": block.name,
             "input": block.input,
         }
-        if name_lower in _ABORT_TOOL_NAMES:
+
+        if reg.triggers_abort(name_lower):
             return ModelClassification(
                 normalized=NormalizedRuntimeAction.ABORT_ACTION,
                 event_kind=RuntimeEventKind.MODEL_ABORT_PROPOSED,
                 payload=payload,
+                forward_ordinary_tool=False,
+            )
+
+        if reg.todo_write_text_signal(name_lower):
+            return ModelClassification(
+                normalized=NormalizedRuntimeAction.STATE_TRANSITION_ACTION,
+                event_kind=RuntimeEventKind.MODEL_TEXT_EMITTED,
+                payload={"tool_name": block.name, "kind": "todo_write"},
                 forward_ordinary_tool=False,
             )
 
@@ -98,7 +111,7 @@ class RuntimeModelClassifier:
             )
 
         if ra.action_type is RuntimeActionType.STATE_TRANSITION:
-            ev = _CONTROL_TOOL_EVENTS.get(name_lower)
+            ev = reg.control_runtime_event(name_lower)
             if ev is not None:
                 norm = (
                     NormalizedRuntimeAction.APPROVAL_ACTION
@@ -115,14 +128,6 @@ class RuntimeModelClassifier:
                         "approval_id": block.id,
                         "permission_id": block.id,
                     },
-                    forward_ordinary_tool=False,
-                )
-            # Planning artifact: treated as planning-time text signal (deterministic registry fallback).
-            if name_lower == "todowrite":
-                return ModelClassification(
-                    normalized=NormalizedRuntimeAction.STATE_TRANSITION_ACTION,
-                    event_kind=RuntimeEventKind.MODEL_TEXT_EMITTED,
-                    payload={"tool_name": block.name, "kind": "todo_write"},
                     forward_ordinary_tool=False,
                 )
             return ModelClassification(

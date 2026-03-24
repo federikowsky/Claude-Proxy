@@ -12,11 +12,20 @@ from claude_proxy.main import create_app
 from tests.conftest import MockAsyncByteStream, base_config
 
 
-def _runtime_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> object:
+def _runtime_settings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    text_control_attempt_policy: str | None = None,
+) -> object:
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     cfg = base_config()
     cfg["bridge"]["runtime_orchestration_enabled"] = True
     cfg["bridge"]["runtime_persistence"] = {"backend": "memory"}
+    if text_control_attempt_policy is not None:
+        cfg["bridge"]["runtime_policies"] = {
+            "text_control_attempt_policy": text_control_attempt_policy,
+        }
     path = tmp_path / "e2e.yaml"
     with path.open("w", encoding="utf-8") as fh:
         yaml.safe_dump(cfg, fh, sort_keys=False)
@@ -342,3 +351,72 @@ def test_nonstream_e2e_reject_after_ask_user(
         )
         assert client.get(f"/v1/runtime/sessions/{sid}").json()["session"]["state"] == "awaiting_approval"
         assert client.post(f"/v1/runtime/sessions/{sid}/reject", json={"reason": "no"}).json()["session"]["state"] == "planning"
+
+
+def test_nonstream_text_control_block_policy_422(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _runtime_settings(tmp_path, monkeypatch, text_control_attempt_policy="block")
+
+    def text_handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_assistant_message([{"type": "text", "text": "I approve."}]),
+        )
+
+    with TestClient(create_app(settings, transport=httpx.MockTransport(text_handler))) as client:
+        r = client.post(
+            "/v1/messages",
+            json={
+                "model": "anthropic/claude-sonnet-4",
+                "messages": [{"role": "user", "content": "x"}],
+                "max_tokens": 16,
+                "stream": False,
+            },
+        )
+    assert r.status_code == 422
+    assert r.json()["error"]["type"] == "text_control_attempt_blocked"
+
+
+@pytest.mark.asyncio
+async def test_stream_text_control_block_policy_sse_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _runtime_settings(tmp_path, monkeypatch, text_control_attempt_policy="block")
+    upstream = (
+        b'event: message_start\n'
+        b'data: {"type":"message_start","message":{"id":"msg_u","role":"assistant","model":"anthropic/claude-sonnet-4","usage":{"input_tokens":4}}}\n\n'
+        b'event: content_block_start\n'
+        b'data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"I approve."}}\n\n'
+        b'event: content_block_stop\n'
+        b'data: {"type":"content_block_stop","index":0}\n\n'
+        b'event: message_stop\n'
+        b'data: {"type":"message_stop"}\n\n'
+    )
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            stream=MockAsyncByteStream([upstream]),
+        )
+
+    app = create_app(settings, transport=httpx.MockTransport(handler))
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as client:
+            r = await client.post(
+                "/v1/messages",
+                json={
+                    "model": "anthropic/claude-sonnet-4",
+                    "messages": [{"role": "user", "content": "x"}],
+                    "max_tokens": 16,
+                    "stream": True,
+                },
+            )
+            body = await r.aread()
+        assert r.status_code == 200
+        assert b"text_control_attempt_blocked" in body
+    finally:
+        await app.state.client_manager.close()

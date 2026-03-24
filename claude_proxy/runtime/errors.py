@@ -22,6 +22,20 @@ class RuntimeRecoveryError(RuntimeOrchestrationError):
     error_type = "runtime_recovery_error"
 
 
+class InvalidToolSchemaContractError(RuntimeOrchestrationError):
+    error_type = "invalid_tool_schema_contract"
+
+
+class InvalidModelRuntimeActionError(RuntimeOrchestrationError):
+    error_type = "invalid_model_runtime_action"
+
+
+class CapabilityNotImplementedInBridgeError(RuntimeOrchestrationError):
+    """Registry row is not executable in the bridge (e.g. inventory-only)."""
+
+    error_type = "capability_not_implemented_in_bridge"
+
+
 class RuntimeOrchestrationDisabledError(BridgeError):
     status_code = 503
     error_type = "runtime_orchestration_disabled"

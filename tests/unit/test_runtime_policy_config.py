@@ -7,6 +7,7 @@ import yaml
 
 from claude_proxy.infrastructure.config import load_settings
 from claude_proxy.runtime.policies import (
+    InteractiveInputRepairMode,
     PermissionDeniedResolution,
     TimeoutResolution,
     UserMessageStartMode,
@@ -27,6 +28,7 @@ def test_policies_from_settings_reflect_yaml_values(tmp_path: Path, monkeypatch:
         "subtask_failed": "failed",
         "timeout_resolution": "interrupted",
         "plan_exit_target": "completing",
+        "interactive_input_repair": "strict",
     }
     path = tmp_path / "cfg.yaml"
     with path.open("w", encoding="utf-8") as fh:
@@ -37,3 +39,4 @@ def test_policies_from_settings_reflect_yaml_values(tmp_path: Path, monkeypatch:
     assert pol.user_rejected is UserRejectedResolution.ABORTED
     assert pol.permission_denied is PermissionDeniedResolution.PLANNING
     assert pol.timeout_resolution is TimeoutResolution.INTERRUPTED
+    assert pol.interactive_input_repair is InteractiveInputRepairMode.STRICT

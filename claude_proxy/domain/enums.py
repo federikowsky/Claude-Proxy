@@ -29,12 +29,14 @@ class ToolCategory(StrEnum):
     STATE_CONTROL  — Claude Code runtime state/control transition tools
                      (e.g. TodoWrite, exit_plan_mode, …).
     ORCHESTRATION  — subagent / delegation tools (e.g. Task, dispatch_agent, …).
+    MCP            — tools following ``mcp__<server>__<tool>`` naming (forwarded; tracked as MCP).
     ORDINARY       — normal domain-specific tool, no special runtime semantics.
     """
 
     GENERIC = "generic"
     STATE_CONTROL = "state_control"
     ORCHESTRATION = "orchestration"
+    MCP = "mcp"
     ORDINARY = "ordinary"
 
 

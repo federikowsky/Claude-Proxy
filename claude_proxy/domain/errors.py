@@ -100,3 +100,9 @@ class RuntimeContractError(BridgeError):
 
     status_code = 422
     error_type = "runtime_contract_error"
+
+
+class TextControlAttemptBlockedError(RuntimeContractError):
+    """Raised when ``text_control_attempt_policy`` is ``block`` and plain text matches control phrases."""
+
+    error_type = "text_control_attempt_blocked"

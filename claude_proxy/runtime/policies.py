@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from claude_proxy.capabilities.enums import TextControlAttemptPolicy
 from claude_proxy.runtime.state import RuntimeState
 
 
@@ -49,6 +50,14 @@ class TimeoutResolution(StrEnum):
     INTERRUPTED = "interrupted"
 
 
+class InteractiveInputRepairMode(StrEnum):
+    """How strictly to enforce SDK-shaped contracts for interactive / plan tools."""
+
+    REPAIR = "repair"
+    FORWARD_RAW = "forward_raw"
+    STRICT = "strict"
+
+
 @dataclass(slots=True, frozen=True)
 class RuntimeOrchestrationPolicies:
     user_message_from_idle: UserMessageStartMode = UserMessageStartMode.EXECUTING
@@ -58,6 +67,8 @@ class RuntimeOrchestrationPolicies:
     tool_failed: ToolFailedResolution = ToolFailedResolution.EXECUTING
     subtask_failed: SubtaskFailedResolution = SubtaskFailedResolution.ORCHESTRATING
     timeout_resolution: TimeoutResolution = TimeoutResolution.FAILED
+    interactive_input_repair: InteractiveInputRepairMode = InteractiveInputRepairMode.REPAIR
+    text_control_attempt_policy: TextControlAttemptPolicy = TextControlAttemptPolicy.IGNORE
 
 
 def approval_resume_state(pending_resume: RuntimeState) -> RuntimeState:

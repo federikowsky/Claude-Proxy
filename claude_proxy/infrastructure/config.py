@@ -42,6 +42,8 @@ class RuntimeOrchestrationPolicySettings(BaseModel):
     tool_failed: Literal["executing", "failed"] = "executing"
     subtask_failed: Literal["orchestrating", "failed"] = "orchestrating"
     timeout_resolution: Literal["failed", "interrupted"] = "failed"
+    interactive_input_repair: Literal["repair", "forward_raw", "strict"] = "repair"
+    text_control_attempt_policy: Literal["ignore", "warn", "block"] = "ignore"
 
 
 class RuntimePersistenceSettings(BaseModel):

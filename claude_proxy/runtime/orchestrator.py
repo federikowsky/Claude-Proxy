@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, Literal
 
+from claude_proxy.capabilities.enums import BridgeImplementationStatus
+from claude_proxy.capabilities.registry import get_capability_registry
+from claude_proxy.capabilities.signals import DEFAULT_TOOL_USE_SIGNAL_CONTEXT, ToolUseSignalContext
+from claude_proxy.capabilities.tool_use_prepare import normalize_tool_use_for_runtime
 from claude_proxy.domain.models import ContentBlockStartEvent, ToolUseBlock
 from claude_proxy.runtime.classifier import RuntimeModelClassifier
-from claude_proxy.runtime.errors import InvalidRuntimeTransitionError, RuntimeOrchestrationError
+from claude_proxy.runtime.errors import (
+    CapabilityNotImplementedInBridgeError,
+    InvalidModelRuntimeActionError,
+    InvalidRuntimeTransitionError,
+    RuntimeOrchestrationError,
+)
 from claude_proxy.runtime.event_log import RuntimeEventLog
 from claude_proxy.runtime.events import RuntimeEvent, RuntimeEventKind
 from claude_proxy.runtime.policies import RuntimeOrchestrationPolicies
@@ -46,6 +56,10 @@ class RuntimeOrchestrator:
         self._log = log
         self._policies = policies or RuntimeOrchestrationPolicies()
         self._classifier = classifier or RuntimeModelClassifier()
+
+    @property
+    def policies(self) -> RuntimeOrchestrationPolicies:
+        return self._policies
 
     def load_or_idle(self, session_id: str) -> SessionRuntimeState:
         s = self._store.get(session_id)
@@ -98,17 +112,24 @@ class RuntimeOrchestrator:
         self,
         session: SessionRuntimeState,
         event: ContentBlockStartEvent,
+        *,
+        signal_context: ToolUseSignalContext | None = None,
     ) -> tuple[SessionRuntimeState, ContentBlockStartEvent | None]:
         if not isinstance(event.block, ToolUseBlock):
             raise RuntimeOrchestrationError("expected ToolUseBlock")
-        mc = self._classifier.classify_tool_use(event.block)
-        try:
-            ns, internal = self.apply_input_event(session, mc.event_kind, mc.payload)
-        except InvalidRuntimeTransitionError as exc:
-            raise RuntimeOrchestrationError(
-                str(exc.message),
-                details=dict(exc.details),
-            ) from exc
+        base = signal_context or DEFAULT_TOOL_USE_SIGNAL_CONTEXT
+        ctx = replace(base, session_state=session.state.value)
+        rec = get_capability_registry().resolve(event.block.name)
+        if rec is not None and rec.implementation_status is BridgeImplementationStatus.INVENTORY_ONLY:
+            raise CapabilityNotImplementedInBridgeError(
+                "capability is inventory-only in this bridge",
+                details={"capability_id": rec.id, "tool": event.block.name},
+            )
+        normalized_block = normalize_tool_use_for_runtime(event.block, policies=self._policies)
+        if normalized_block is not event.block:
+            event = replace(event, block=normalized_block)
+        mc = self._classifier.classify_tool_use(event.block, signal_context=ctx)
+        ns, internal = self.apply_input_event(session, mc.event_kind, mc.payload)
         forward = any(ik is RuntimeEventKind.ACTION_FORWARDED for ik, _ in internal)
         if ns.state.value == "failed":
             raise RuntimeOrchestrationError(
@@ -118,7 +139,7 @@ class RuntimeOrchestrator:
         if mc.forward_ordinary_tool and forward:
             return ns, event
         if mc.event_kind is RuntimeEventKind.MODEL_INVALID_RUNTIME_ACTION:
-            raise RuntimeOrchestrationError(
+            raise InvalidModelRuntimeActionError(
                 str(mc.payload.get("reason", "invalid_runtime_action")),
                 details={"tool": event.block.name},
             )

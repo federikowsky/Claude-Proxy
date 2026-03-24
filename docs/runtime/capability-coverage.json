@@ -1,0 +1,737 @@
+{
+  "mcp_pattern": {
+    "aliases": [],
+    "canonical_name": "mcp__<server>__<tool>",
+    "capability_id": "mcp__dynamic_pattern",
+    "classified": true,
+    "control_api": "not_applicable",
+    "evidence_tier": "official_mcp_documentation",
+    "forward_or_consume": "forwarded",
+    "implementation_status": "implemented",
+    "non_stream_support": true,
+    "normalized": "not_applicable",
+    "persisted": "when_orchestration_enabled",
+    "policy_governed": true,
+    "recognized": true,
+    "replayed": "when_orchestration_enabled",
+    "residual_limitation": null,
+    "runtime_event_value": null,
+    "stream_support": true,
+    "tests": [
+      "unit:test_capability_registry",
+      "unit:test_runtime_action_classifier"
+    ]
+  },
+  "non_tool_families": [
+    {
+      "family_id": "hooks",
+      "rationale": "Hook events (PreToolUse, PostToolUse, \u2026) require a normalized event stream in the proxy; not present.",
+      "status": "blocked_by_missing_wire_contract"
+    },
+    {
+      "family_id": "runtime_system_messages",
+      "rationale": "TaskStartedMessage / TaskProgressMessage wire shapes are not modeled as canonical events in this repository.",
+      "status": "blocked_by_missing_wire_contract"
+    },
+    {
+      "family_id": "worktree",
+      "rationale": "WorktreeCreate/Remove are host/CLI concerns; no stable proxy API or message mapping exists here.",
+      "status": "explicitly_out_of_scope"
+    },
+    {
+      "family_id": "remote",
+      "rationale": "Remote agent/control flags are CLI/session configuration, not translated through this HTTP bridge.",
+      "status": "explicitly_out_of_scope"
+    },
+    {
+      "family_id": "teammate",
+      "rationale": "Teammate mode is a Claude Code product surface without a dedicated proxy protocol in this repo.",
+      "status": "explicitly_out_of_scope"
+    },
+    {
+      "family_id": "background_task_progress",
+      "rationale": "Progress surfaces are documented for parity; only ordinary tool forward + runtime orchestration apply where tools exist.",
+      "status": "inventory_only"
+    }
+  ],
+  "registry_rows": [
+    {
+      "aliases": [
+        "approval",
+        "ask_user",
+        "askuserquestion"
+      ],
+      "canonical_name": "AskUserQuestion",
+      "capability_id": "interactive_ask_user_question",
+      "classified": true,
+      "control_api": "yes",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "consumed",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "yes",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": "model_request_approval_proposed",
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry",
+        "unit:test_tool_input_normalize",
+        "integration:e2e_flows"
+      ]
+    },
+    {
+      "aliases": [
+        "permission_request",
+        "request_permission",
+        "request_permissions"
+      ],
+      "canonical_name": "request_permissions",
+      "capability_id": "permission_request_sdk",
+      "classified": true,
+      "control_api": "yes",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "consumed",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": "model_request_permission_proposed",
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry",
+        "integration:e2e_flows"
+      ]
+    },
+    {
+      "aliases": [
+        "exit_plan_mode",
+        "exitplanmode"
+      ],
+      "canonical_name": "ExitPlanMode",
+      "capability_id": "plan_exit_exit_plan_mode",
+      "classified": true,
+      "control_api": "yes",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "consumed",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "yes",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": "model_exit_plan_proposed",
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry",
+        "unit:test_tool_input_normalize",
+        "unit:runtime_classifier"
+      ]
+    },
+    {
+      "aliases": [
+        "enter_plan_mode",
+        "plan_mode"
+      ],
+      "canonical_name": "enter_plan_mode",
+      "capability_id": "plan_enter",
+      "classified": true,
+      "control_api": "yes",
+      "evidence_tier": "observed_runtime",
+      "forward_or_consume": "consumed",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": "model_enter_plan_proposed",
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry",
+        "unit:runtime_classifier"
+      ]
+    },
+    {
+      "aliases": [
+        "todowrite"
+      ],
+      "canonical_name": "TodoWrite",
+      "capability_id": "plan_todo_write",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "consumed",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry",
+        "integration:orchestration"
+      ]
+    },
+    {
+      "aliases": [
+        "todoread"
+      ],
+      "canonical_name": "TodoRead",
+      "capability_id": "builtin_todo_read",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry"
+      ]
+    },
+    {
+      "aliases": [
+        "agent",
+        "delegate",
+        "dispatch_agent",
+        "invoke_subagent",
+        "task"
+      ],
+      "canonical_name": "Agent",
+      "capability_id": "orchestration_subagent",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "consumed",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry",
+        "unit:runtime_action_classifier",
+        "integration:e2e_flows"
+      ]
+    },
+    {
+      "aliases": [
+        "abort",
+        "abort_session",
+        "cancel_session",
+        "end_session",
+        "kill_session",
+        "session_abort"
+      ],
+      "canonical_name": "abort",
+      "capability_id": "session_abort_tool",
+      "classified": true,
+      "control_api": "yes",
+      "evidence_tier": "observed_runtime",
+      "forward_or_consume": "consumed",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry",
+        "integration:e2e_flows"
+      ]
+    },
+    {
+      "aliases": [
+        "bash"
+      ],
+      "canonical_name": "Bash",
+      "capability_id": "builtin_bash",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_runtime_action_classifier",
+        "integration:orchestration"
+      ]
+    },
+    {
+      "aliases": [
+        "computer"
+      ],
+      "canonical_name": "computer",
+      "capability_id": "builtin_computer",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "inferred_provisional",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "partial",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": "Proxy forwards the tool call only; no host execution, output validation, or side-effect checks are performed inside the bridge.",
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry"
+      ]
+    },
+    {
+      "aliases": [
+        "read"
+      ],
+      "canonical_name": "Read",
+      "capability_id": "builtin_read",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_runtime_action_classifier",
+        "integration:orchestration"
+      ]
+    },
+    {
+      "aliases": [
+        "write"
+      ],
+      "canonical_name": "Write",
+      "capability_id": "builtin_write",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry"
+      ]
+    },
+    {
+      "aliases": [
+        "edit",
+        "multiedit"
+      ],
+      "canonical_name": "Edit",
+      "capability_id": "builtin_edit",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry"
+      ]
+    },
+    {
+      "aliases": [
+        "glob"
+      ],
+      "canonical_name": "Glob",
+      "capability_id": "builtin_glob",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry"
+      ]
+    },
+    {
+      "aliases": [
+        "grep"
+      ],
+      "canonical_name": "Grep",
+      "capability_id": "builtin_grep",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry"
+      ]
+    },
+    {
+      "aliases": [
+        "ls"
+      ],
+      "canonical_name": "ls",
+      "capability_id": "builtin_ls",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry"
+      ]
+    },
+    {
+      "aliases": [
+        "notebookedit",
+        "notebookread"
+      ],
+      "canonical_name": "NotebookEdit",
+      "capability_id": "builtin_notebook",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry"
+      ]
+    },
+    {
+      "aliases": [
+        "webbrowser",
+        "webfetch"
+      ],
+      "canonical_name": "WebFetch",
+      "capability_id": "builtin_webfetch",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry"
+      ]
+    },
+    {
+      "aliases": [
+        "websearch"
+      ],
+      "canonical_name": "WebSearch",
+      "capability_id": "builtin_websearch",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "inferred_provisional",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "partial",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": "Proxy forwards the tool call only; no host execution, output validation, or side-effect checks are performed inside the bridge.",
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry"
+      ]
+    },
+    {
+      "aliases": [
+        "screenshottool"
+      ],
+      "canonical_name": "screenshottool",
+      "capability_id": "builtin_screenshot",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "inferred_provisional",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "partial",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": "Proxy forwards the tool call only; no host execution, output validation, or side-effect checks are performed inside the bridge.",
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry"
+      ]
+    },
+    {
+      "aliases": [
+        "bashoutput"
+      ],
+      "canonical_name": "BashOutput",
+      "capability_id": "builtin_bash_output",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry"
+      ]
+    },
+    {
+      "aliases": [
+        "killbash"
+      ],
+      "canonical_name": "KillBash",
+      "capability_id": "builtin_kill_bash",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry"
+      ]
+    },
+    {
+      "aliases": [
+        "listmcpresources"
+      ],
+      "canonical_name": "ListMcpResources",
+      "capability_id": "mcp_list_resources",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry"
+      ]
+    },
+    {
+      "aliases": [
+        "readmcpresource"
+      ],
+      "canonical_name": "ReadMcpResource",
+      "capability_id": "mcp_read_resource",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "official_sdk_reference",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry"
+      ]
+    },
+    {
+      "aliases": [
+        "record_thinking"
+      ],
+      "canonical_name": "record_thinking",
+      "capability_id": "host_record_thinking",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "observed_runtime",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry"
+      ]
+    },
+    {
+      "aliases": [
+        "set_env"
+      ],
+      "canonical_name": "set_env",
+      "capability_id": "host_set_env",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "observed_runtime",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry"
+      ]
+    },
+    {
+      "aliases": [
+        "clear_env"
+      ],
+      "canonical_name": "clear_env",
+      "capability_id": "host_clear_env",
+      "classified": true,
+      "control_api": "not_applicable",
+      "evidence_tier": "observed_runtime",
+      "forward_or_consume": "forwarded",
+      "implementation_status": "implemented",
+      "non_stream_support": true,
+      "normalized": "not_applicable",
+      "persisted": "when_orchestration_enabled",
+      "policy_governed": true,
+      "recognized": true,
+      "replayed": "when_orchestration_enabled",
+      "residual_limitation": null,
+      "runtime_event_value": null,
+      "stream_support": true,
+      "tests": [
+        "unit:test_capability_registry"
+      ]
+    }
+  ]
+}

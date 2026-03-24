@@ -10,7 +10,11 @@ from claude_proxy.domain.models import (
     TextBlock,
     ToolUseBlock,
 )
+from claude_proxy.capabilities.signals import ToolUseSignalContext
+from claude_proxy.capabilities.text_control import apply_text_control_policy
 from claude_proxy.runtime.orchestrator import RuntimeOrchestrator
+
+_STREAM_CTX = ToolUseSignalContext(delivery="stream", origin="model_tool_use")
 
 
 async def runtime_orchestrate_stream(
@@ -26,11 +30,19 @@ async def runtime_orchestrate_stream(
         async for ev in events:
             if isinstance(ev, ContentBlockStartEvent):
                 if isinstance(ev.block, ToolUseBlock):
-                    session, out = orchestrator.process_tool_block_start(session, ev)
+                    session, out = orchestrator.process_tool_block_start(
+                        session,
+                        ev,
+                        signal_context=_STREAM_CTX,
+                    )
                     if out is not None:
                         yield out
                     continue
                 if isinstance(ev.block, TextBlock):
+                    apply_text_control_policy(
+                        text=ev.block.text,
+                        policy=orchestrator.policies.text_control_attempt_policy,
+                    )
                     session = orchestrator.on_model_text_block_started(session)
                     yield ev
                     continue
