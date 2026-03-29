@@ -138,6 +138,254 @@ def normalize_exit_plan_mode_input(
     return out, repairs
 
 
+def _str_to_bool(raw: str) -> bool:
+    return raw.strip().lower() in ("true", "1", "yes", "on")
+
+
+def normalize_todo_write_input(
+    inp: Any,
+    *,
+    mode: InteractiveInputRepairMode,
+) -> tuple[dict[str, Any], list[str]]:
+    """Coerce ``todos`` to an array (models often emit a JSON string or a single object)."""
+    repairs: list[str] = []
+    if not isinstance(inp, dict):
+        if mode is InteractiveInputRepairMode.STRICT:
+            raise ValueError("todo_write_input_not_object")
+        repairs.append("input_coerced_to_object")
+        base: dict[str, Any] = {"todos": [], "merge": True}
+        return base, repairs
+
+    out = dict(inp)
+    raw = out.get("todos")
+
+    if raw is None:
+        if mode is InteractiveInputRepairMode.STRICT:
+            raise ValueError("todo_write_missing_todos")
+        out["todos"] = []
+        repairs.append("todos_defaulted_empty")
+    elif isinstance(raw, str):
+        stripped = raw.strip()
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            if mode is InteractiveInputRepairMode.STRICT:
+                raise ValueError("todo_write_todos_invalid_json_string") from None
+            out["todos"] = []
+            repairs.append("todos_invalid_json_string_defaulted_empty")
+        else:
+            repairs.append("todos_parsed_from_json_string")
+            if isinstance(parsed, list):
+                out["todos"] = list(parsed)
+            elif isinstance(parsed, dict):
+                out["todos"] = [parsed]
+                repairs.append("todos_wrapped_single_object")
+            else:
+                if mode is InteractiveInputRepairMode.STRICT:
+                    raise ValueError("todo_write_todos_not_array_after_parse")
+                out["todos"] = []
+                repairs.append("todos_defaulted_empty_after_parse")
+    elif isinstance(raw, dict):
+        out["todos"] = [raw]
+        repairs.append("todos_wrapped_single_object")
+    elif isinstance(raw, list):
+        out["todos"] = list(raw)
+    else:
+        if mode is InteractiveInputRepairMode.STRICT:
+            raise ValueError("todo_write_todos_wrong_type")
+        out["todos"] = []
+        repairs.append("todos_coerced_empty_non_list")
+
+    if "merge" in out and isinstance(out["merge"], str):
+        out["merge"] = _str_to_bool(out["merge"])
+        repairs.append("merge_coerced_from_string")
+
+    if repairs:
+        _logger.debug(
+            "tool_input_repaired tool=TodoWrite repairs=%s",
+            ",".join(repairs),
+            extra={"extra_fields": {"tool": "TodoWrite", "repairs": repairs}},
+        )
+    return out, repairs
+
+
+def normalize_todo_read_input(
+    inp: Any,
+    *,
+    mode: InteractiveInputRepairMode,
+) -> tuple[dict[str, Any], list[str]]:
+    """Coerce ``merge`` from string booleans when models emit JSON-incorrect types."""
+    repairs: list[str] = []
+    if not isinstance(inp, dict):
+        if mode is InteractiveInputRepairMode.STRICT:
+            raise ValueError("todo_read_input_not_object")
+        repairs.append("input_coerced_to_object")
+        return {"merge": True}, repairs
+
+    out = dict(inp)
+    if "merge" in out and isinstance(out["merge"], str):
+        out["merge"] = _str_to_bool(out["merge"])
+        repairs.append("merge_coerced_from_string")
+
+    if repairs:
+        _logger.debug(
+            "tool_input_repaired tool=TodoRead repairs=%s",
+            ",".join(repairs),
+            extra={"extra_fields": {"tool": "TodoRead", "repairs": repairs}},
+        )
+    return out, repairs
+
+
+def normalize_permission_request_input(
+    inp: Any,
+    *,
+    mode: InteractiveInputRepairMode,
+) -> tuple[dict[str, Any], list[str]]:
+    """Parse ``permissions`` when provided as a JSON array string."""
+    repairs: list[str] = []
+    if not isinstance(inp, dict):
+        if mode is InteractiveInputRepairMode.STRICT:
+            raise ValueError("permission_request_input_not_object")
+        repairs.append("input_coerced_to_object")
+        return {}, repairs
+
+    out = dict(inp)
+    perms = out.get("permissions")
+    if isinstance(perms, str):
+        stripped = perms.strip()
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            if mode is InteractiveInputRepairMode.STRICT:
+                raise ValueError("permission_request_permissions_invalid_json") from None
+            out["permissions"] = []
+            repairs.append("permissions_invalid_json_defaulted_empty")
+        else:
+            repairs.append("permissions_parsed_from_json_string")
+            if isinstance(parsed, list):
+                out["permissions"] = parsed
+            elif isinstance(parsed, dict):
+                out["permissions"] = [parsed]
+            else:
+                if mode is InteractiveInputRepairMode.STRICT:
+                    raise ValueError("permission_request_permissions_not_array_after_parse")
+                out["permissions"] = []
+                repairs.append("permissions_defaulted_empty_after_parse")
+
+    if repairs:
+        _logger.debug(
+            "tool_input_repaired tool=request_permissions repairs=%s",
+            ",".join(repairs),
+            extra={"extra_fields": {"tool": "request_permissions", "repairs": repairs}},
+        )
+    return out, repairs
+
+
+def normalize_plan_enter_input(
+    inp: Any,
+    *,
+    mode: InteractiveInputRepairMode,
+) -> tuple[dict[str, Any], list[str]]:
+    """Ensure object input; coerce common text fields to strings."""
+    repairs: list[str] = []
+    if not isinstance(inp, dict):
+        if mode is InteractiveInputRepairMode.STRICT:
+            raise ValueError("plan_enter_input_not_object")
+        repairs.append("input_coerced_to_object")
+        return {}, repairs
+
+    out = dict(inp)
+    for key in ("plan", "reason", "message", "goal", "summary"):
+        if key not in out or out[key] is None:
+            continue
+        val = out[key]
+        if not isinstance(val, str):
+            out[key] = json.dumps(val) if isinstance(val, (dict, list)) else str(val)
+            repairs.append(f"{key}_coerced_to_string")
+
+    if repairs:
+        _logger.debug(
+            "tool_input_repaired tool=enter_plan_mode repairs=%s",
+            ",".join(repairs),
+            extra={"extra_fields": {"tool": "enter_plan_mode", "repairs": repairs}},
+        )
+    return out, repairs
+
+
+def normalize_orchestration_subagent_input(
+    inp: Any,
+    *,
+    mode: InteractiveInputRepairMode,
+) -> tuple[dict[str, Any], list[str]]:
+    """Coerce string-typed fields models sometimes emit as numbers or nested JSON."""
+    repairs: list[str] = []
+    if not isinstance(inp, dict):
+        if mode is InteractiveInputRepairMode.STRICT:
+            raise ValueError("orchestration_subagent_input_not_object")
+        repairs.append("input_coerced_to_object")
+        return {"prompt": "" if inp is None else str(inp)}, repairs
+
+    out = dict(inp)
+    string_keys = (
+        "prompt",
+        "description",
+        "task",
+        "subagent_type",
+        "model",
+        "instructions",
+    )
+    for key in string_keys:
+        if key not in out or out[key] is None:
+            continue
+        val = out[key]
+        if isinstance(val, str):
+            continue
+        out[key] = json.dumps(val) if isinstance(val, (dict, list)) else str(val)
+        repairs.append(f"{key}_coerced_to_string")
+
+    if repairs:
+        _logger.debug(
+            "tool_input_repaired tool=Agent repairs=%s",
+            ",".join(repairs),
+            extra={"extra_fields": {"tool": "Agent", "repairs": repairs}},
+        )
+    return out, repairs
+
+
+def normalize_bash_session_id_input(
+    inp: Any,
+    *,
+    mode: InteractiveInputRepairMode,
+) -> tuple[dict[str, Any], list[str]]:
+    """Coerce ``bash_id`` / ``shell_id`` / ``session_id`` to strings (SDK expects string ids)."""
+    repairs: list[str] = []
+    if not isinstance(inp, dict):
+        if mode is InteractiveInputRepairMode.STRICT:
+            raise ValueError("bash_session_tool_input_not_object")
+        repairs.append("input_coerced_to_object")
+        return {}, repairs
+
+    out = dict(inp)
+    for key in ("bash_id", "shell_id", "session_id", "id"):
+        if key not in out or out[key] is None:
+            continue
+        val = out[key]
+        if isinstance(val, str):
+            continue
+        if isinstance(val, bool):
+            raise ValueError("bash_session_id_invalid_type")
+        out[key] = str(int(val)) if isinstance(val, float) and val == int(val) else str(val)
+        repairs.append(f"{key}_coerced_to_string")
+
+    if repairs:
+        _logger.debug(
+            "tool_input_repaired tool=bash_session repairs=%s",
+            ",".join(repairs),
+            extra={"extra_fields": {"tool": "bash_session", "repairs": repairs}},
+        )
+    return out, repairs
+
+
 def apply_schema_contract(
     *,
     record: CapabilityRecord,
@@ -153,4 +401,16 @@ def apply_schema_contract(
         return normalize_ask_user_question_input(tool_input, mode=mode)
     if record.schema_contract is SchemaContractKind.EXIT_PLAN:
         return normalize_exit_plan_mode_input(tool_input, mode=mode)
+    if record.schema_contract is SchemaContractKind.TODO_WRITE:
+        return normalize_todo_write_input(tool_input, mode=mode)
+    if record.schema_contract is SchemaContractKind.TODO_READ:
+        return normalize_todo_read_input(tool_input, mode=mode)
+    if record.schema_contract is SchemaContractKind.PERMISSION_REQUEST:
+        return normalize_permission_request_input(tool_input, mode=mode)
+    if record.schema_contract is SchemaContractKind.PLAN_ENTER:
+        return normalize_plan_enter_input(tool_input, mode=mode)
+    if record.schema_contract is SchemaContractKind.ORCHESTRATION_SUBAGENT:
+        return normalize_orchestration_subagent_input(tool_input, mode=mode)
+    if record.schema_contract is SchemaContractKind.BASH_SESSION_ID:
+        return normalize_bash_session_id_input(tool_input, mode=mode)
     return tool_input, []

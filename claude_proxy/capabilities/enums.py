@@ -42,6 +42,12 @@ class SchemaContractKind(StrEnum):
     NONE = "none"
     INTERACTIVE_QUESTION = "interactive_question"
     EXIT_PLAN = "exit_plan"
+    TODO_WRITE = "todo_write"
+    TODO_READ = "todo_read"
+    PERMISSION_REQUEST = "permission_request"
+    PLAN_ENTER = "plan_enter"
+    ORCHESTRATION_SUBAGENT = "orchestration_subagent"
+    BASH_SESSION_ID = "bash_session_id"
 
 
 class BridgeImplementationStatus(StrEnum):

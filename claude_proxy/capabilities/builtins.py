@@ -44,6 +44,7 @@ def builtin_capability_records() -> tuple[CapabilityRecord, ...]:
             evidence_tier=_E.OFFICIAL_SDK_REFERENCE,
             tool_category=_TC.STATE_CONTROL,
             runtime_event_value="model_request_permission_proposed",
+            schema_contract=_S.PERMISSION_REQUEST,
         ),
         # --- Plan mode ---
         CapabilityRecord(
@@ -64,6 +65,7 @@ def builtin_capability_records() -> tuple[CapabilityRecord, ...]:
             evidence_tier=_E.OBSERVED_RUNTIME,
             tool_category=_TC.STATE_CONTROL,
             runtime_event_value="model_enter_plan_proposed",
+            schema_contract=_S.PLAN_ENTER,
         ),
         CapabilityRecord(
             id="plan_todo_write",
@@ -73,6 +75,7 @@ def builtin_capability_records() -> tuple[CapabilityRecord, ...]:
             evidence_tier=_E.OFFICIAL_SDK_REFERENCE,
             tool_category=_TC.STATE_CONTROL,
             todo_write_text_signal=True,
+            schema_contract=_S.TODO_WRITE,
         ),
         CapabilityRecord(
             id="builtin_todo_read",
@@ -81,6 +84,7 @@ def builtin_capability_records() -> tuple[CapabilityRecord, ...]:
             inventory_class=_I.BUILTIN_ORDINARY,
             evidence_tier=_E.OFFICIAL_SDK_REFERENCE,
             tool_category=_TC.GENERIC,
+            schema_contract=_S.TODO_READ,
         ),
         # --- Subagent / orchestration (Agent + legacy Task + aliases) ---
         CapabilityRecord(
@@ -90,6 +94,7 @@ def builtin_capability_records() -> tuple[CapabilityRecord, ...]:
             inventory_class=_I.SUBAGENT_ORCHESTRATION,
             evidence_tier=_E.OFFICIAL_SDK_REFERENCE,
             tool_category=_TC.ORCHESTRATION,
+            schema_contract=_S.ORCHESTRATION_SUBAGENT,
         ),
         # --- Session abort (model-emitted) ---
         CapabilityRecord(
@@ -220,6 +225,7 @@ def builtin_capability_records() -> tuple[CapabilityRecord, ...]:
             inventory_class=_I.BACKGROUND_EXECUTION,
             evidence_tier=_E.OFFICIAL_SDK_REFERENCE,
             tool_category=_TC.GENERIC,
+            schema_contract=_S.BASH_SESSION_ID,
         ),
         CapabilityRecord(
             id="builtin_kill_bash",
@@ -228,6 +234,7 @@ def builtin_capability_records() -> tuple[CapabilityRecord, ...]:
             inventory_class=_I.BACKGROUND_EXECUTION,
             evidence_tier=_E.OFFICIAL_SDK_REFERENCE,
             tool_category=_TC.GENERIC,
+            schema_contract=_S.BASH_SESSION_ID,
         ),
         # --- MCP resource helpers (named tools, not mcp__ pattern) ---
         CapabilityRecord(

@@ -175,6 +175,38 @@ def test_nonstream_strict_rejects_ask_user_non_object_with_typed_error(
     assert r.json()["error"]["type"] == "invalid_tool_schema_contract"
 
 
+def test_nonstream_todowrite_todos_string_repaired_to_array(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = _settings(tmp_path, monkeypatch)
+    todos_str = json.dumps(
+        [{"content": "Step 1", "status": "pending", "activeForm": "Doing step 1"}],
+    )
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_assistant_tool("TodoWrite", "tw1", {"todos": todos_str, "merge": True}),
+        )
+
+    with TestClient(create_app(settings, transport=httpx.MockTransport(handler))) as client:
+        r = client.post(
+            "/v1/messages",
+            json={
+                "model": "anthropic/claude-sonnet-4",
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 32,
+                "stream": False,
+                "tools": [{"name": "TodoWrite", "input_schema": {"type": "object"}}],
+            },
+        )
+    assert r.status_code == 200
+    tool = next(c for c in r.json()["content"] if c["type"] == "tool_use")
+    assert isinstance(tool["input"]["todos"], list)
+    assert tool["input"]["todos"][0]["content"] == "Step 1"
+
+
 @pytest.mark.asyncio
 async def test_stream_ask_user_repair_matches_nonstream(
     tmp_path: Path,
