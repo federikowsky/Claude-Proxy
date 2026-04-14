@@ -94,6 +94,7 @@ class MessageService:
     ) -> AsyncIterator[bytes]:
         model, provider = self._resolve(request)
         prepared_request = self._request_preparer.prepare(request, model)
+        tool_schemas = {t.name: t.input_schema for t in prepared_request.tools} or None
         self._validate_request(prepared_request, model)
         if self._debug:
             _logger.info(
@@ -127,7 +128,6 @@ class MessageService:
             )
             sequenced = self._sequencer.sequence(routed)
         else:
-            tool_schemas = {t.name: t.input_schema for t in prepared_request.tools} or None
             repaired = repair_stream_tool_blocks(
                 normalized, policies=self._repair_policies, tool_schemas=tool_schemas,
             )
@@ -169,6 +169,7 @@ class MessageService:
     ) -> dict[str, object]:
         model, provider = self._resolve(request)
         prepared_request = self._request_preparer.prepare(request, model)
+        tool_schemas = {t.name: t.input_schema for t in prepared_request.tools} or None
         self._validate_request(prepared_request, model)
         if self._debug:
             _logger.info(
@@ -197,7 +198,11 @@ class MessageService:
             if self._runtime_orchestrator is not None
             else self._repair_policies
         )
-        normalized = repair_chat_response_tool_blocks(normalized, policies=policies)
+        normalized = repair_chat_response_tool_blocks(
+            normalized,
+            policies=policies,
+            tool_schemas=tool_schemas,
+        )
         if self._runtime_orchestrator is not None:
             sid = self._runtime_session_id(prepared_request, provider_context)
             session = self._runtime_orchestrator.load_or_idle(sid)

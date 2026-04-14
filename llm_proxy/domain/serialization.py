@@ -281,13 +281,11 @@ def tool_definition_from_payload(payload: Mapping[str, Any]) -> ToolDefinition:
     input_schema = payload.get("input_schema")
     if not isinstance(name, str):
         raise RequestValidationError("tool definition requires name")
-    if not isinstance(input_schema, Mapping):
-        raise RequestValidationError("tool definition requires input_schema")
     description = payload.get("description")
     return ToolDefinition(
         name=name,
         description=description if isinstance(description, str) else None,
-        input_schema=dict(input_schema),
+        input_schema=normalize_tool_schema(input_schema, tool_name=name),
         extras=_extras(payload, {"name", "description", "input_schema"}),
     )
 

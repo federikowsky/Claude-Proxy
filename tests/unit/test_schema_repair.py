@@ -197,3 +197,28 @@ async def test_stream_no_schema_no_repair() -> None:
     assert len(result) == 3
     assert isinstance(result[0], ContentBlockStartEvent)
     assert result[1].delta.partial_json == '{"x":1}'
+
+
+@pytest.mark.asyncio
+async def test_stream_registry_tool_without_contract_still_gets_generic_schema_repair() -> None:
+    """Registry-known generic tools like Read still use request schema fallback repair."""
+    tool_schemas = {
+        "Read": {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string"},
+                "offset": {"type": "integer", "default": 1},
+            },
+            "required": ["file_path"],
+        },
+    }
+    events: list[CanonicalEvent] = [
+        ContentBlockStartEvent(index=0, block=ToolUseBlock(id="t1", name="Read", input={})),
+        ContentBlockDeltaEvent(index=0, delta=InputJsonDelta(partial_json="{}")),
+        ContentBlockStopEvent(index=0),
+    ]
+    result = await _collect(
+        repair_stream_tool_blocks(_from_list(events), policies=_policies(), tool_schemas=tool_schemas)
+    )
+    repaired = json.loads(result[1].delta.partial_json)
+    assert repaired["file_path"] == ""

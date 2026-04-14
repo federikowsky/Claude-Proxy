@@ -82,3 +82,18 @@ def test_count_tokens_schema_builds_nonstream_probe_request() -> None:
     assert request.max_tokens == 1
     assert request.thinking is not None and request.thinking.budget_tokens == 2048
     assert request.extensions["context_management"] == {"workspace": "repo"}
+
+
+def test_request_schema_missing_tool_input_schema_defaults_to_object_schema() -> None:
+    payload = AnthropicMessagesRequest.model_validate(
+        {
+            "model": "anthropic/claude-sonnet-4",
+            "messages": [{"role": "user", "content": "search web"}],
+            "max_tokens": 32,
+            "stream": True,
+            "tools": [{"name": "WebSearch", "description": "Search web"}],
+        },
+    )
+
+    request = payload.to_domain()
+    assert request.tools[0].input_schema == {"type": "object", "properties": {}}

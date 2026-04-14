@@ -55,6 +55,7 @@ def normalize_tool_use_for_runtime(
         if policies is not None
         else InteractiveInputRepairMode.REPAIR
     )
+    schema = None if tool_schemas is None else tool_schemas.get(block.name)
 
     if rec is not None:
         # --- SDK-specific normalizer path (existing) ---
@@ -95,15 +96,15 @@ def normalize_tool_use_for_runtime(
                     },
                 },
             )
-        if not changed:
+        if changed:
+            return replace(block, input=new_input)
+        # Registry-known tools without a dedicated contract still benefit from
+        # generic schema-driven repair (for example Read.file_path).
+        if rec.schema_contract is not SchemaContractKind.NONE:
             return block
-        return replace(block, input=new_input)
 
     # --- Generic schema-driven fallback ---
-    if mode is InteractiveInputRepairMode.FORWARD_RAW or tool_schemas is None:
-        return block
-    schema = tool_schemas.get(block.name)
-    if schema is None:
+    if mode is InteractiveInputRepairMode.FORWARD_RAW or schema is None:
         return block
     new_input, repairs = repair_from_schema(block.input, schema)
     if not repairs:
@@ -126,13 +127,14 @@ def repair_chat_response_tool_blocks(
     response: ChatResponse,
     *,
     policies: RuntimeOrchestrationPolicies,
+    tool_schemas: ToolSchemaLookup | None = None,
 ) -> ChatResponse:
     """Repair tool inputs on a normalized assistant message before contract enforcement / encoding."""
     changed = False
     new_blocks: list[object] = []
     for block in response.content:
         if isinstance(block, ToolUseBlock):
-            nb = normalize_tool_use_for_runtime(block, policies=policies)
+            nb = normalize_tool_use_for_runtime(block, policies=policies, tool_schemas=tool_schemas)
             if nb is not block:
                 changed = True
             new_blocks.append(nb)
