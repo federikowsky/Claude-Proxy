@@ -533,7 +533,7 @@ class OpenAICompatProvider:
             raise ProviderProtocolError(f"{self._provider_name} request failed: {exc}") from exc
 
         if response.status_code >= 400:
-            self._raise_http_error(response.status_code, response.content)
+            self._raise_http_error(response.status_code, response.content, dict(response.headers))
 
         try:
             data = response.json()
@@ -576,7 +576,7 @@ class OpenAICompatProvider:
             raise ProviderProtocolError(f"{self._provider_name} request failed: {exc}") from exc
 
         if response.status_code >= 400:
-            self._raise_http_error(response.status_code, response.content)
+            self._raise_http_error(response.status_code, response.content, dict(response.headers))
 
         try:
             data = response.json()
@@ -601,7 +601,7 @@ class OpenAICompatProvider:
         if response.status_code >= 400:
             body = await response.aread()
             await stream_context.__aexit__(None, None, None)
-            self._raise_http_error(response.status_code, body)
+            self._raise_http_error(response.status_code, body, dict(response.headers))
         return response
 
     def _completions_url(self) -> str:
@@ -635,7 +635,7 @@ class OpenAICompatProvider:
             pool=self._settings.pool_timeout_seconds,
         )
 
-    def _raise_http_error(self, status: int, body: bytes) -> None:
+    def _raise_http_error(self, status: int, body: bytes, headers: dict[str, str] | None = None) -> None:
         message = _provider_error_message(body)
         if status in {401, 403}:
             raise ProviderAuthError(
@@ -645,10 +645,18 @@ class OpenAICompatProvider:
                     "upstream_status": status,
                 },
             )
+        retry_after: float | None = None
+        raw = headers.get("retry-after") if headers else None
+        if raw is not None:
+            try:
+                retry_after = float(raw)
+            except (ValueError, TypeError):
+                pass
         raise ProviderHttpError(
             message or f"{self._provider_name} returned HTTP {status}",
             upstream_status=status,
             provider=self._provider_name,
+            retry_after=retry_after,
         )
 
 

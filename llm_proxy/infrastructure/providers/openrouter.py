@@ -264,7 +264,7 @@ class OpenRouterProvider:
             raise ProviderProtocolError(f"OpenRouter request failed: {exc}") from exc
 
         if response.status_code >= 400:
-            _raise_openrouter_http_error(response.status_code, response.content)
+            _raise_openrouter_http_error(response.status_code, response.content, dict(response.headers))
 
         try:
             payload = response.json()
@@ -297,7 +297,7 @@ class OpenRouterProvider:
             raise ProviderProtocolError(f"OpenRouter request failed: {exc}") from exc
 
         if response.status_code >= 400:
-            _raise_openrouter_http_error(response.status_code, response.content)
+            _raise_openrouter_http_error(response.status_code, response.content, dict(response.headers))
 
         try:
             payload = response.json()
@@ -321,7 +321,7 @@ class OpenRouterProvider:
         if response.status_code >= 400:
             body = await response.aread()
             await stream_context.__aexit__(None, None, None)
-            _raise_openrouter_http_error(response.status_code, body)
+            _raise_openrouter_http_error(response.status_code, body, dict(response.headers))
         return response
 
     def _messages_url(self) -> str:
@@ -401,7 +401,7 @@ def _provider_error_message(body: bytes) -> str | None:
     return None
 
 
-def _raise_openrouter_http_error(status: int, body: bytes) -> None:
+def _raise_openrouter_http_error(status: int, body: bytes, headers: dict[str, str] | None = None) -> None:
     message = _provider_error_message(body)
     if status in {401, 403}:
         raise ProviderAuthError(
@@ -411,10 +411,18 @@ def _raise_openrouter_http_error(status: int, body: bytes) -> None:
                 "upstream_status": status,
             },
         )
+    retry_after: float | None = None
+    raw = headers.get("retry-after") if headers else None
+    if raw is not None:
+        try:
+            retry_after = float(raw)
+        except (ValueError, TypeError):
+            pass
     raise ProviderHttpError(
         message or f"OpenRouter returned HTTP {status}",
         upstream_status=status,
         provider="openrouter",
+        retry_after=retry_after,
     )
 
 

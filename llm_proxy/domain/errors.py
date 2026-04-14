@@ -56,17 +56,27 @@ class ProviderHttpError(BridgeError):
     status_code = 502
     error_type = "provider_http_error"
 
-    def __init__(self, message: str, *, upstream_status: int, provider: str) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        upstream_status: int,
+        provider: str,
+        retry_after: float | None = None,
+    ) -> None:
         translated_status = upstream_status if 400 <= upstream_status < 500 else 502
         if upstream_status in {401, 403}:
             translated_status = 502
+        details: dict[str, object] = {
+            "provider": provider,
+            "upstream_status": upstream_status,
+        }
+        if retry_after is not None:
+            details["retry_after"] = retry_after
         super().__init__(
             message,
             status_code=translated_status,
-            details={
-                "provider": provider,
-                "upstream_status": upstream_status,
-            },
+            details=details,
         )
 
 

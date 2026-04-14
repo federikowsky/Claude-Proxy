@@ -15,6 +15,16 @@ ENV_PREFIX = "LLM_PROXY__"
 DEFAULT_CONFIG_PATH = Path("config/llm-proxy.yaml")
 
 
+class CorsSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    allowed_origins: tuple[str, ...] = ("*",)
+    allowed_methods: tuple[str, ...] = ("GET", "POST", "OPTIONS")
+    allowed_headers: tuple[str, ...] = ("*",)
+    allow_credentials: bool = False
+
+
 class ServerSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -23,6 +33,7 @@ class ServerSettings(BaseModel):
     log_level: str = "info"
     request_timeout_seconds: float = Field(default=120, gt=0)
     debug: bool = False
+    cors: CorsSettings = Field(default_factory=CorsSettings)
 
 
 class RoutingSettings(BaseModel):

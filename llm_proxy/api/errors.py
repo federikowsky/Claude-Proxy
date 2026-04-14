@@ -33,7 +33,15 @@ def _validation_error_summary(errors: list[dict[str, Any]]) -> str:
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(BridgeError)
     async def bridge_error_handler(_, exc: BridgeError) -> JSONResponse:
-        return JSONResponse(status_code=exc.status_code, content=exc.to_payload())
+        headers: dict[str, str] = {}
+        retry_after = exc.details.get("retry_after")
+        if retry_after is not None:
+            headers["Retry-After"] = str(int(retry_after))
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=exc.to_payload(),
+            headers=headers or None,
+        )
 
     @app.exception_handler(FastAPIRequestValidationError)
     async def request_validation_handler(

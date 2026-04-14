@@ -268,7 +268,7 @@ class AnthropicProvider:
             raise ProviderProtocolError(f"Anthropic request failed: {exc}") from exc
 
         if response.status_code >= 400:
-            _raise_anthropic_http_error(response.status_code, response.content)
+            _raise_anthropic_http_error(response.status_code, response.content, dict(response.headers))
 
         try:
             payload = response.json()
@@ -300,7 +300,7 @@ class AnthropicProvider:
             raise ProviderProtocolError(f"Anthropic request failed: {exc}") from exc
 
         if response.status_code >= 400:
-            _raise_anthropic_http_error(response.status_code, response.content)
+            _raise_anthropic_http_error(response.status_code, response.content, dict(response.headers))
 
         try:
             data = response.json()
@@ -324,7 +324,7 @@ class AnthropicProvider:
         if response.status_code >= 400:
             body = await response.aread()
             await stream_context.__aexit__(None, None, None)
-            _raise_anthropic_http_error(response.status_code, body)
+            _raise_anthropic_http_error(response.status_code, body, dict(response.headers))
         return response
 
     def _messages_url(self) -> str:
@@ -398,7 +398,7 @@ def _provider_error_message(body: bytes) -> str | None:
     return None
 
 
-def _raise_anthropic_http_error(status: int, body: bytes) -> None:
+def _raise_anthropic_http_error(status: int, body: bytes, headers: dict[str, str] | None = None) -> None:
     message = _provider_error_message(body)
     if status in {401, 403}:
         raise ProviderAuthError(
@@ -408,10 +408,18 @@ def _raise_anthropic_http_error(status: int, body: bytes) -> None:
                 "upstream_status": status,
             },
         )
+    retry_after: float | None = None
+    raw = headers.get("retry-after") if headers else None
+    if raw is not None:
+        try:
+            retry_after = float(raw)
+        except (ValueError, TypeError):
+            pass
     raise ProviderHttpError(
         message or f"Anthropic returned HTTP {status}",
         upstream_status=status,
         provider="anthropic",
+        retry_after=retry_after,
     )
 
 

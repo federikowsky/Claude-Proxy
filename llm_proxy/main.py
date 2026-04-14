@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from llm_proxy.api.errors import install_error_handlers
 from llm_proxy.api.http_debug import install_http_debug_middleware
@@ -101,6 +102,15 @@ def create_app(
             await client_manager.close()
 
     app = FastAPI(title="llm-proxy", version="1.0.0", lifespan=lifespan)
+    if resolved_settings.server.cors.enabled:
+        cors = resolved_settings.server.cors
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(cors.allowed_origins),
+            allow_methods=list(cors.allowed_methods),
+            allow_headers=list(cors.allowed_headers),
+            allow_credentials=cors.allow_credentials,
+        )
     app.state.settings = resolved_settings
     app.state.client_manager = client_manager
     app.state.message_service = message_service
