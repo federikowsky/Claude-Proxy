@@ -1,6 +1,6 @@
 # Runtime capability inventory (freeze)
 
-**Status:** freeze-ready specification aligned with code in `claude_proxy/capabilities/`.  
+**Status:** freeze-ready specification aligned with code in `llm_proxy/capabilities/`.  
 **Audience:** implementers of the proxy runtime bridge, contract tests, and operators.  
 **Evidence tiers:** `official_sdk_reference` · `official_cli_documentation` · `official_hooks_documentation` · `official_mcp_documentation` · `observed_runtime` · `inferred_provisional`.
 
@@ -109,7 +109,7 @@ Registry tools for host helpers:
 
 ## 10. Non-tool families (formal closure)
 
-Authoritative tuple: `claude_proxy/capabilities/families.py` → `NON_TOOL_FAMILY_CLOSURE`.  
+Authoritative tuple: `llm_proxy/capabilities/families.py` → `NON_TOOL_FAMILY_CLOSURE`.  
 Executable export: `docs/runtime/capability-coverage.json` → `non_tool_families`.
 
 | Family | Status | Rationale (summary) |
@@ -139,7 +139,7 @@ Covered above: `Task`→`Agent`, `ask_user`→`AskUserQuestion`, `plan_mode`→`
 ## 13. Runtime-only / system messages
 
 Task progress / background task classes from SDK docs are listed in §6 note.  
-**Text-only control phrases** (e.g. “I approve”, “done”, “plan complete”, “permission granted”) **never** apply `RuntimeEventKind` transitions. They are handled only by `claude_proxy/capabilities/text_control.py` with YAML `bridge.runtime_policies.text_control_attempt_policy` (`ignore` / `warn` / `block`).
+**Text-only control phrases** (e.g. “I approve”, “done”, “plan complete”, “permission granted”) **never** apply `RuntimeEventKind` transitions. They are handled only by `llm_proxy/capabilities/text_control.py` with YAML `bridge.runtime_policies.text_control_attempt_policy` (`ignore` / `warn` / `block`).
 
 ---
 
@@ -154,8 +154,8 @@ Task progress / background task classes from SDK docs are listed in §6 note.
 
 ## Code anchor
 
-- Descriptor table: `claude_proxy/capabilities/builtins.py` → `builtin_capability_records()`
-- Resolver: `claude_proxy/capabilities/registry.py` → `get_capability_registry()`
-- Coverage manifest + export: `claude_proxy/capabilities/coverage_matrix.py` → `REQUIRED_TESTS_BY_CAPABILITY_ID`, `export_coverage_json_bytes()`, `write_coverage_artifact()`
+- Descriptor table: `llm_proxy/capabilities/builtins.py` → `builtin_capability_records()`
+- Resolver: `llm_proxy/capabilities/registry.py` → `get_capability_registry()`
+- Coverage manifest + export: `llm_proxy/capabilities/coverage_matrix.py` → `REQUIRED_TESTS_BY_CAPABILITY_ID`, `export_coverage_json_bytes()`, `write_coverage_artifact()`
 - Generated artifact: `docs/runtime/capability-coverage.json`
-- Text-control policy: `claude_proxy/capabilities/text_control.py`, `claude_proxy/infrastructure/config.py` → `RuntimeOrchestrationPolicySettings.text_control_attempt_policy`
+- Text-control policy: `llm_proxy/capabilities/text_control.py`, `llm_proxy/infrastructure/config.py` → `RuntimeOrchestrationPolicySettings.text_control_attempt_policy`

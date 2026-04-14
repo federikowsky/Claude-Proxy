@@ -5,9 +5,9 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from claude_proxy.domain.enums import Role
-from claude_proxy.domain.errors import ProviderBoundaryError, ProviderProtocolError
-from claude_proxy.domain.models import (
+from llm_proxy.domain.enums import Role
+from llm_proxy.domain.errors import ProviderBoundaryError, ProviderProtocolError
+from llm_proxy.domain.models import (
     ChatRequest,
     ContentBlockDeltaEvent,
     ContentBlockStartEvent,
@@ -26,11 +26,11 @@ from claude_proxy.domain.models import (
     ToolResultBlock,
     ToolUseBlock,
 )
-from claude_proxy.infrastructure.providers.openai_compat import (
+from llm_proxy.infrastructure.providers.openai_compat import (
     OpenAICompatStreamNormalizer,
     OpenAICompatTranslator,
 )
-from claude_proxy.infrastructure.providers.sse import IncrementalSseParser, SseMessage
+from llm_proxy.infrastructure.providers.sse import IncrementalSseParser, SseMessage
 from tests.conftest import chunk_bytes, collect_list
 
 

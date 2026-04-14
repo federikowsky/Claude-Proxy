@@ -1,0 +1,212 @@
+from __future__ import annotations
+
+import logging
+from collections.abc import AsyncIterator
+
+from llm_proxy.domain.enums import CompatibilityMode, ThinkingPassthroughMode
+from llm_proxy.domain.models import (
+    CanonicalEvent,
+    ChatRequest,
+    ChatResponse,
+    ContentBlock,
+    ContentBlockDeltaEvent,
+    ContentBlockStartEvent,
+    ContentBlockStopEvent,
+    ErrorEvent,
+    MessageDeltaEvent,
+    MessageStartEvent,
+    MessageStopEvent,
+    ModelInfo,
+    PingEvent,
+    ProviderWarningEvent,
+    SignatureDelta,
+    ThinkingBlock,
+    ThinkingDelta,
+    ToolResultBlock,
+    UnknownBlock,
+    UnknownDelta,
+)
+
+_logger = logging.getLogger("llm_proxy.compat")
+
+
+class CompatibilityNormalizer:
+    async def normalize_stream(
+        self,
+        request: ChatRequest,
+        model: ModelInfo,
+        events: AsyncIterator[CanonicalEvent],
+        mode: CompatibilityMode,
+    ) -> AsyncIterator[CanonicalEvent]:
+        suppressed_indexes: set[int] = set()
+
+        async for event in events:
+            if isinstance(event, ProviderWarningEvent):
+                self._maybe_log(mode, event.message, event.payload)
+                continue
+
+            if isinstance(event, MessageStartEvent):
+                yield MessageStartEvent(message=self.normalize_response(request, model, event.message, mode))
+                continue
+
+            if isinstance(event, ContentBlockStartEvent):
+                block = self._normalize_block(event.block, mode, model)
+                if block is None:
+                    suppressed_indexes.add(event.index)
+                    self._maybe_log(
+                        mode,
+                        "suppressed_content_block",
+                        {"index": event.index, "type": getattr(event.block, "type", "unknown")},
+                    )
+                    continue
+                yield ContentBlockStartEvent(index=event.index, block=block)
+                continue
+
+            if isinstance(event, ContentBlockDeltaEvent):
+                if event.index in suppressed_indexes:
+                    continue
+                delta = self._normalize_delta(event.delta, mode, model)
+                if delta is None:
+                    self._maybe_log(mode, "suppressed_content_delta", {"index": event.index})
+                    continue
+                yield ContentBlockDeltaEvent(index=event.index, delta=delta)
+                continue
+
+            if isinstance(event, ContentBlockStopEvent):
+                if event.index in suppressed_indexes:
+                    suppressed_indexes.remove(event.index)
+                    continue
+                yield event
+                continue
+
+            if isinstance(event, (MessageDeltaEvent, PingEvent, ErrorEvent)):
+                yield event
+                continue
+
+            yield event
+
+    def normalize_response(
+        self,
+        request: ChatRequest,
+        model: ModelInfo,
+        response: ChatResponse,
+        mode: CompatibilityMode,
+    ) -> ChatResponse:
+        del request
+        blocks = tuple(
+            block
+            for block in (self._normalize_block(block, mode, model) for block in response.content)
+            if block is not None
+        )
+        return ChatResponse(
+            id=response.id,
+            role=response.role,
+            model=response.model,
+            content=blocks,
+            stop_reason=response.stop_reason,
+            stop_sequence=response.stop_sequence,
+            usage=response.usage,
+            metadata=response.metadata,
+            extras=response.extras,
+        )
+
+    def _normalize_block(
+        self,
+        block: ContentBlock,
+        mode: CompatibilityMode,
+        model: ModelInfo,
+    ) -> ContentBlock | None:
+        if isinstance(block, UnknownBlock):
+            return None
+        if isinstance(block, ThinkingBlock) and not self._allow_thinking_source(
+            block.source_type,
+            mode,
+            model,
+        ):
+            return None
+        if isinstance(block, ToolResultBlock) and isinstance(block.content, tuple):
+            nested = tuple(
+                nested_block
+                for nested_block in (self._normalize_block(item, mode, model) for item in block.content)
+                if nested_block is not None
+            )
+            return ToolResultBlock(
+                tool_use_id=block.tool_use_id,
+                content=nested,
+                is_error=block.is_error,
+                extras=block.extras,
+            )
+        return block
+
+    def _normalize_delta(
+        self,
+        delta: object,
+        mode: CompatibilityMode,
+        model: ModelInfo,
+    ) -> object | None:
+        if isinstance(delta, UnknownDelta):
+            return None
+        if isinstance(delta, (ThinkingDelta, SignatureDelta)) and not self._allow_thinking_source(
+            getattr(delta, "source_type", "thinking"),
+            mode,
+            model,
+        ):
+            return None
+        return delta
+
+    def _allow_thinking_source(
+        self,
+        source_type: str,
+        mode: CompatibilityMode,
+        model: ModelInfo,
+    ) -> bool:
+        thinking_mode = model.thinking_passthrough_mode
+        if thinking_mode is ThinkingPassthroughMode.OFF:
+            return False
+        if mode is CompatibilityMode.COMPAT:
+            return source_type == "thinking"
+        if thinking_mode is ThinkingPassthroughMode.NATIVE_ONLY:
+            return source_type == "thinking"
+        return True
+
+    def _maybe_log(self, mode: CompatibilityMode, message: str, payload: dict[str, object]) -> None:
+        if mode is CompatibilityMode.DEBUG:
+            _logger.info("%s payload=%s", message, payload)
+
+
+class StreamEventSequencer:
+    async def sequence(self, events: AsyncIterator[CanonicalEvent]) -> AsyncIterator[CanonicalEvent]:
+        open_block_index: int | None = None
+
+        async for event in events:
+            if isinstance(event, ContentBlockStartEvent):
+                if open_block_index is not None:
+                    yield ContentBlockStopEvent(index=open_block_index)
+                open_block_index = event.index
+                yield event
+                continue
+
+            if isinstance(event, ContentBlockDeltaEvent):
+                if open_block_index != event.index:
+                    continue
+                yield event
+                continue
+
+            if isinstance(event, ContentBlockStopEvent):
+                if open_block_index != event.index:
+                    continue
+                yield event
+                open_block_index = None
+                continue
+
+            if isinstance(event, (MessageDeltaEvent, MessageStopEvent, ErrorEvent)):
+                if open_block_index is not None:
+                    yield ContentBlockStopEvent(index=open_block_index)
+                    open_block_index = None
+                yield event
+                continue
+
+            yield event
+
+        if open_block_index is not None:
+            yield ContentBlockStopEvent(index=open_block_index)

@@ -9,7 +9,7 @@ import httpx
 import pytest
 import yaml
 
-from claude_proxy.infrastructure.config import Settings, load_settings
+from llm_proxy.infrastructure.config import Settings, load_settings
 
 os.environ.setdefault("OPENROUTER_API_KEY", "test-openrouter-key")
 
@@ -57,7 +57,7 @@ def base_config() -> dict[str, Any]:
                 "pool_timeout_seconds": 10,
                 "max_connections": 100,
                 "max_keepalive_connections": 20,
-                "app_name": "claude-proxy",
+                "app_name": "llm-proxy",
                 "app_url": None,
                 "debug_echo_upstream_body": False,
             },

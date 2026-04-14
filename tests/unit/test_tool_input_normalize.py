@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from claude_proxy.capabilities.tool_use_normalize import (
+from llm_proxy.capabilities.tool_use_normalize import (
     normalize_ask_user_question_input,
     normalize_bash_session_id_input,
     normalize_exit_plan_mode_input,
@@ -14,7 +14,7 @@ from claude_proxy.capabilities.tool_use_normalize import (
     normalize_todo_read_input,
     normalize_todo_write_input,
 )
-from claude_proxy.runtime.policies import InteractiveInputRepairMode
+from llm_proxy.runtime.policies import InteractiveInputRepairMode
 
 
 def test_ask_user_promotes_legacy_question_field() -> None:

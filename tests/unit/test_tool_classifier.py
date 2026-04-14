@@ -3,15 +3,15 @@ from __future__ import annotations
 
 import pytest
 
-from claude_proxy.application.tool_classifier import (
+from llm_proxy.application.tool_classifier import (
     GENERIC_TOOL_NAMES,
     ORCHESTRATION_TOOL_NAMES,
     STATE_CONTROL_TOOL_NAMES,
     ToolClassifier,
     get_default_classifier,
 )
-from claude_proxy.domain.enums import ToolCategory
-from claude_proxy.domain.models import ToolDefinition
+from llm_proxy.domain.enums import ToolCategory
+from llm_proxy.domain.models import ToolDefinition
 
 
 def _tool(name: str) -> ToolDefinition:

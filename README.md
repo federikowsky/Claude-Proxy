@@ -1,4 +1,4 @@
-# Claude Proxy
+# LLM Proxy
 
 A local, multi-provider reverse proxy that exposes an **Anthropic Messages-compatible API** surface and translates requests to any supported upstream provider. Designed as a transparent gateway for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and other Anthropic-style clients.
 
@@ -7,7 +7,7 @@ Client (Claude Code, SDK, curl)
         │
         ▼
 ┌─────────────────────┐
-│    Claude Proxy      │   Anthropic Messages API
+│    LLM Proxy      │   Anthropic Messages API
 │  POST /v1/messages   │──────────────────────────────►  OpenRouter
 │  POST /v1/messages/  │──────────────────────────────►  Anthropic (direct)
 │       count_tokens   │──────────────────────────────►  NVIDIA NIM
@@ -61,11 +61,11 @@ python3.14 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 
-cp config/claude-proxy.example.yaml config/claude-proxy.yaml
-# Edit config/claude-proxy.yaml: enable providers, set api_key_env values
+cp config/llm-proxy.example.yaml config/llm-proxy.yaml
+# Edit config/llm-proxy.yaml: enable providers, set api_key_env values
 
 export OPENROUTER_API_KEY="sk-or-..."
-python -m claude_proxy
+python -m llm_proxy
 ```
 
 The proxy starts on `http://127.0.0.1:8082` by default.
@@ -88,14 +88,14 @@ curl http://127.0.0.1:8082/health
 
 Configuration is loaded from:
 
-1. `config/claude-proxy.yaml` (default path)
-2. Path specified by `CLAUDE_PROXY_CONFIG` environment variable
+1. `config/llm-proxy.yaml` (default path)
+2. Path specified by `LLM_PROXY_CONFIG` environment variable
 
-Any value can be overridden via environment variables with the `CLAUDE_PROXY__` prefix:
+Any value can be overridden via environment variables with the `LLM_PROXY__` prefix:
 
 ```bash
-export CLAUDE_PROXY__SERVER__PORT=9000
-export CLAUDE_PROXY__BRIDGE__COMPATIBILITY_MODE=compat
+export LLM_PROXY__SERVER__PORT=9000
+export LLM_PROXY__BRIDGE__COMPATIBILITY_MODE=compat
 ```
 
 ### Reference
@@ -222,7 +222,7 @@ Enabled via `bridge.runtime_orchestration_enabled: true`. Provides session-level
 The codebase follows **Ports and Adapters** (hexagonal architecture):
 
 ```
-claude_proxy/
+llm_proxy/
 ├── api/             HTTP layer — FastAPI routes, request/response schemas
 ├── application/     Orchestration — request flow, compatibility, SSE encoding
 ├── domain/          Canonical models, enums, errors, abstract ports
@@ -250,9 +250,9 @@ Each provider implements the `ModelProvider` protocol (`stream`, `complete`, `co
 ### Standard
 
 ```bash
-python -m claude_proxy
+python -m llm_proxy
 # or
-claude-proxy
+llm-proxy
 ```
 
 Reads `host`, `port`, and `log_level` from the YAML config.
@@ -260,8 +260,8 @@ Reads `host`, `port`, and `log_level` from the YAML config.
 ### With Uvicorn Options
 
 ```bash
-uvicorn claude_proxy.main:app --host 127.0.0.1 --port 8082 --reload
-uvicorn claude_proxy.main:app --host 0.0.0.0 --port 8082 --workers 4
+uvicorn llm_proxy.main:app --host 127.0.0.1 --port 8082 --reload
+uvicorn llm_proxy.main:app --host 0.0.0.0 --port 8082 --workers 4
 ```
 
 ## Development
@@ -293,8 +293,8 @@ pytest -q
 ### Linting
 
 ```bash
-ruff check claude_proxy/
-mypy claude_proxy/ --ignore-missing-imports
+ruff check llm_proxy/
+mypy llm_proxy/ --ignore-missing-imports
 ```
 
 ## Known Limitations

@@ -4,8 +4,8 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from claude_proxy.application.policies import StreamEventSequencer
-from claude_proxy.domain.models import (
+from llm_proxy.application.policies import StreamEventSequencer
+from llm_proxy.domain.models import (
     ContentBlockDeltaEvent,
     ContentBlockStartEvent,
     ContentBlockStopEvent,

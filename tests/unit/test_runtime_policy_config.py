@@ -5,15 +5,15 @@ from pathlib import Path
 import pytest
 import yaml
 
-from claude_proxy.infrastructure.config import load_settings
-from claude_proxy.runtime.policies import (
+from llm_proxy.infrastructure.config import load_settings
+from llm_proxy.runtime.policies import (
     InteractiveInputRepairMode,
     PermissionDeniedResolution,
     TimeoutResolution,
     UserMessageStartMode,
     UserRejectedResolution,
 )
-from claude_proxy.runtime.policy_binding import policies_from_settings
+from llm_proxy.runtime.policy_binding import policies_from_settings
 from tests.conftest import base_config
 
 

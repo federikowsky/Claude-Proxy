@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from claude_proxy.domain.enums import CompatibilityMode, ThinkingPassthroughMode
-from claude_proxy.domain.errors import InternalBridgeError
-from claude_proxy.infrastructure.config import load_settings
+from llm_proxy.domain.enums import CompatibilityMode, ThinkingPassthroughMode
+from llm_proxy.domain.errors import InternalBridgeError
+from llm_proxy.infrastructure.config import load_settings
 from tests.conftest import base_config
 
 
@@ -20,7 +20,7 @@ def test_load_settings_supports_compatibility_mode_override(
         yaml.safe_dump(base_config(), handle, sort_keys=False)
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
-    monkeypatch.setenv("CLAUDE_PROXY__BRIDGE__COMPATIBILITY_MODE", "compat")
+    monkeypatch.setenv("LLM_PROXY__BRIDGE__COMPATIBILITY_MODE", "compat")
     settings = load_settings(config_path)
 
     assert settings.bridge.compatibility_mode is CompatibilityMode.COMPAT

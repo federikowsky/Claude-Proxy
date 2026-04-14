@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from claude_proxy.capabilities.builtins import OFFICIAL_SDK_TOOL_CANONICALS, builtin_capability_records
-from claude_proxy.capabilities.enums import CapabilityInventoryClass, SchemaContractKind
-from claude_proxy.capabilities.registry import CapabilityRegistry, get_capability_registry, is_mcp_style_tool_name
-from claude_proxy.domain.enums import ToolCategory
+from llm_proxy.capabilities.builtins import OFFICIAL_SDK_TOOL_CANONICALS, builtin_capability_records
+from llm_proxy.capabilities.enums import CapabilityInventoryClass, SchemaContractKind
+from llm_proxy.capabilities.registry import CapabilityRegistry, get_capability_registry, is_mcp_style_tool_name
+from llm_proxy.domain.enums import ToolCategory
 
 
 def test_registry_singleton_builds_without_alias_collision() -> None:
@@ -70,7 +70,7 @@ def test_inventory_class_coverage_minimum() -> None:
 
 
 def test_coverage_test_manifest_matches_registry_ids() -> None:
-    from claude_proxy.capabilities.coverage_matrix import validate_test_manifest_matches_registry
+    from llm_proxy.capabilities.coverage_matrix import validate_test_manifest_matches_registry
 
     validate_test_manifest_matches_registry()
 
@@ -78,7 +78,7 @@ def test_coverage_test_manifest_matches_registry_ids() -> None:
 def test_exported_coverage_json_registry_ids_match_singleton() -> None:
     import json
 
-    from claude_proxy.capabilities.coverage_matrix import export_coverage_json_bytes
+    from llm_proxy.capabilities.coverage_matrix import export_coverage_json_bytes
 
     payload = json.loads(export_coverage_json_bytes().decode())
     reg_ids = {r.id for r in get_capability_registry().records}

@@ -5,13 +5,13 @@ import json
 import httpx
 import pytest
 
-from claude_proxy.domain.enums import Role
-from claude_proxy.domain.errors import (
+from llm_proxy.domain.enums import Role
+from llm_proxy.domain.errors import (
     ProviderAuthError,
     ProviderHttpError,
     UpstreamTimeoutError,
 )
-from claude_proxy.domain.models import (
+from llm_proxy.domain.models import (
     ChatRequest,
     ContentBlockDeltaEvent,
     Message,
@@ -22,8 +22,8 @@ from claude_proxy.domain.models import (
     TextDelta,
     ToolUseBlock,
 )
-from claude_proxy.infrastructure.config import ProviderSettings
-from claude_proxy.infrastructure.providers.openai_compat import (
+from llm_proxy.infrastructure.config import ProviderSettings
+from llm_proxy.infrastructure.providers.openai_compat import (
     OpenAICompatProvider,
     OpenAICompatTranslator,
 )

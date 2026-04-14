@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from claude_proxy.api.schemas import AnthropicCountTokensRequest, AnthropicMessagesRequest
-from claude_proxy.domain.models import TextBlock, ToolResultBlock
+from llm_proxy.api.schemas import AnthropicCountTokensRequest, AnthropicMessagesRequest
+from llm_proxy.domain.models import TextBlock, ToolResultBlock
 
 
 def test_request_schema_preserves_structured_blocks_tools_and_thinking() -> None:

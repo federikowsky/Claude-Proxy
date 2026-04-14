@@ -5,8 +5,8 @@ from dataclasses import replace
 
 import pytest
 
-from claude_proxy.domain.enums import Role
-from claude_proxy.domain.models import (
+from llm_proxy.domain.enums import Role
+from llm_proxy.domain.models import (
     ChatRequest,
     ContentBlockDeltaEvent,
     ContentBlockStartEvent,
@@ -22,11 +22,11 @@ from claude_proxy.domain.models import (
     ToolDefinition,
     ToolUseBlock,
 )
-from claude_proxy.infrastructure.providers.openrouter import (
+from llm_proxy.infrastructure.providers.openrouter import (
     OpenRouterStreamNormalizer,
     OpenRouterTranslator,
 )
-from claude_proxy.infrastructure.providers.sse import IncrementalSseParser, SseMessage
+from llm_proxy.infrastructure.providers.sse import IncrementalSseParser, SseMessage
 from tests.conftest import chunk_bytes, collect_list
 
 

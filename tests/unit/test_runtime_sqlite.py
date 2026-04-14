@@ -3,14 +3,14 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
-from claude_proxy.infrastructure.config import RuntimeOrchestrationPolicySettings
-from claude_proxy.runtime.events import RuntimeEventKind
-from claude_proxy.runtime.orchestrator import RuntimeOrchestrator
-from claude_proxy.runtime.persistence.sqlite_backend import SqliteRuntimeStores
-from claude_proxy.runtime.policy_binding import policies_from_settings
-from claude_proxy.runtime.recovery import replay_persisted_session
-from claude_proxy.runtime.state import RuntimeState
-from claude_proxy.runtime.state_machine import idle_session
+from llm_proxy.infrastructure.config import RuntimeOrchestrationPolicySettings
+from llm_proxy.runtime.events import RuntimeEventKind
+from llm_proxy.runtime.orchestrator import RuntimeOrchestrator
+from llm_proxy.runtime.persistence.sqlite_backend import SqliteRuntimeStores
+from llm_proxy.runtime.policy_binding import policies_from_settings
+from llm_proxy.runtime.recovery import replay_persisted_session
+from llm_proxy.runtime.state import RuntimeState
+from llm_proxy.runtime.state_machine import idle_session
 
 
 def test_sqlite_roundtrip_session_and_events(tmp_path: Path) -> None:

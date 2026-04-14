@@ -5,10 +5,10 @@ import logging
 
 import pytest
 
-from claude_proxy.application.request_preparer import ModelAwareRequestPreparer
-from claude_proxy.domain.enums import ActionPolicy, Role, ThinkingPassthroughMode
-from claude_proxy.domain.errors import ProviderBoundaryError, RequestValidationError
-from claude_proxy.domain.models import ChatRequest, Message, ModelInfo, ToolDefinition
+from llm_proxy.application.request_preparer import ModelAwareRequestPreparer
+from llm_proxy.domain.enums import ActionPolicy, Role, ThinkingPassthroughMode
+from llm_proxy.domain.errors import ProviderBoundaryError, RequestValidationError
+from llm_proxy.domain.models import ChatRequest, Message, ModelInfo, ToolDefinition
 
 
 def _model(
@@ -84,7 +84,7 @@ class TestRequestPreparerSchemaScenarios:
         assert prepared is request
 
     def test_tool_category_annotated(self) -> None:
-        from claude_proxy.domain.enums import ToolCategory
+        from llm_proxy.domain.enums import ToolCategory
 
         tool = _tool("bash", {"type": "object", "properties": {}})
         request = _request(tools=(tool,))
@@ -112,7 +112,7 @@ class TestRequestPreparerProviderBoundaryInvariant:
 
     def test_invariant_raises_for_empty_dict_schema(self) -> None:
         """Verify the guard logic itself by calling _assert_schema_invariant directly."""
-        from claude_proxy.domain.enums import ToolCategory
+        from llm_proxy.domain.enums import ToolCategory
         from dataclasses import replace
 
         tool = ToolDefinition(
@@ -126,7 +126,7 @@ class TestRequestPreparerProviderBoundaryInvariant:
         assert "broken_tool" in str(exc_info.value)
 
     def test_invariant_passes_for_valid_schema(self) -> None:
-        from claude_proxy.domain.enums import ToolCategory
+        from llm_proxy.domain.enums import ToolCategory
 
         tool = ToolDefinition(
             name="good_tool",
@@ -143,6 +143,6 @@ class TestRequestPreparerLogging:
         preparer = ModelAwareRequestPreparer()
         tool = _tool("bash", {"type": "object"})  # missing properties
         request = _request(tools=(tool,))
-        with caplog.at_level(logging.DEBUG, logger="claude_proxy.serialization"):
+        with caplog.at_level(logging.DEBUG, logger="llm_proxy.serialization"):
             preparer.prepare(request, _model())
         assert any("schema_properties_injected" in r.getMessage() for r in caplog.records)

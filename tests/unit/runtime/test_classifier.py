@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from claude_proxy.domain.models import ToolUseBlock
-from claude_proxy.runtime.classifier import RuntimeModelClassifier
-from claude_proxy.runtime.events import RuntimeEventKind
+from llm_proxy.domain.models import ToolUseBlock
+from llm_proxy.runtime.classifier import RuntimeModelClassifier
+from llm_proxy.runtime.events import RuntimeEventKind
 
 
 def test_classify_ordinary_domain_tool() -> None:

@@ -5,10 +5,10 @@ import logging
 
 import pytest
 
-from claude_proxy.application.runtime_contract import RuntimeContractEnforcer
-from claude_proxy.domain.enums import ActionPolicy, Role, RuntimeActionType, ThinkingPassthroughMode
-from claude_proxy.domain.errors import RuntimeContractError
-from claude_proxy.domain.models import ChatResponse, ModelInfo, TextBlock, ToolUseBlock, Usage
+from llm_proxy.application.runtime_contract import RuntimeContractEnforcer
+from llm_proxy.domain.enums import ActionPolicy, Role, RuntimeActionType, ThinkingPassthroughMode
+from llm_proxy.domain.errors import RuntimeContractError
+from llm_proxy.domain.models import ChatResponse, ModelInfo, TextBlock, ToolUseBlock, Usage
 
 
 def _model(
@@ -117,7 +117,7 @@ class TestRuntimeContractEnforcerWarn:
         model = _model(generic_tool_emulation_policy=ActionPolicy.WARN)
         block = ToolUseBlock(id="tu_1", name="bash", input={"command": "echo done"})
         response = _response([block])
-        with caplog.at_level(logging.WARNING, logger="claude_proxy.contract"):
+        with caplog.at_level(logging.WARNING, logger="llm_proxy.contract"):
             result = self.enforcer.enforce_response(response, model)
         assert result is response
         assert any("runtime_contract_warn" in r.getMessage() for r in caplog.records)

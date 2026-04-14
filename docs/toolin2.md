@@ -1,4 +1,4 @@
-# Claude-Proxy — Runtime Orchestration System Specification
+# LLM-Proxy — Runtime Orchestration System Specification
 **Status:** Freeze-ready  
 **Scope:** Full production runtime orchestration for Claude Code compatibility over non-Claude models  
 **Supersedes:** all previous partial/runtime-contract-only designs  
@@ -8,7 +8,7 @@
 
 ## 1. Objective
 
-This system defines the **full runtime orchestration layer** required to make Claude Code operate credibly over non-Claude models through `claude-proxy`, without relying on native Claude runtime semantics.
+This system defines the **full runtime orchestration layer** required to make Claude Code operate credibly over non-Claude models through `llm-proxy`, without relying on native Claude runtime semantics.
 
 The proxy is no longer only a transport normalizer and contract guard. It becomes a **deterministic runtime control plane** that:
 

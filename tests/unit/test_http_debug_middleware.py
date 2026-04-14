@@ -7,8 +7,8 @@ import httpx
 import pytest
 import yaml
 
-from claude_proxy.infrastructure.config import load_settings
-from claude_proxy.main import create_app
+from llm_proxy.infrastructure.config import load_settings
+from llm_proxy.main import create_app
 from tests.conftest import base_config
 
 
@@ -22,7 +22,7 @@ class _ListHandler(logging.Handler):
 
 
 def _attach_http_debug_capture() -> tuple[logging.Logger, _ListHandler]:
-    log = logging.getLogger("claude_proxy.http_debug")
+    log = logging.getLogger("llm_proxy.http_debug")
     handler = _ListHandler()
     log.addHandler(handler)
     log.setLevel(logging.INFO)

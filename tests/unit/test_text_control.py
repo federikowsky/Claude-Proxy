@@ -4,12 +4,12 @@ import logging
 
 import pytest
 
-from claude_proxy.capabilities.enums import TextControlAttemptPolicy
-from claude_proxy.capabilities.text_control import (
+from llm_proxy.capabilities.enums import TextControlAttemptPolicy
+from llm_proxy.capabilities.text_control import (
     apply_text_control_policy,
     detect_text_control_attempt,
 )
-from claude_proxy.domain.errors import TextControlAttemptBlockedError
+from llm_proxy.domain.errors import TextControlAttemptBlockedError
 
 
 @pytest.mark.parametrize(
@@ -33,7 +33,7 @@ def test_apply_text_control_ignore() -> None:
 
 
 def test_apply_text_control_warn_logs(caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.WARNING, logger="claude_proxy.text_control")
+    caplog.set_level(logging.WARNING, logger="llm_proxy.text_control")
     apply_text_control_policy(text="done", policy=TextControlAttemptPolicy.WARN)
     assert any("text_control_attempt" in r.message for r in caplog.records)
 

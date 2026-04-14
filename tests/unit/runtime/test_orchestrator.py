@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from claude_proxy.domain.models import ContentBlockStartEvent, ToolUseBlock
-from claude_proxy.runtime.errors import RuntimeOrchestrationError
-from claude_proxy.runtime.event_log import InMemoryRuntimeEventLog
-from claude_proxy.runtime.events import RuntimeEventKind
-from claude_proxy.runtime.orchestrator import RuntimeOrchestrator
-from claude_proxy.runtime.session_store import InMemoryRuntimeSessionStore
+from llm_proxy.domain.models import ContentBlockStartEvent, ToolUseBlock
+from llm_proxy.runtime.errors import RuntimeOrchestrationError
+from llm_proxy.runtime.event_log import InMemoryRuntimeEventLog
+from llm_proxy.runtime.events import RuntimeEventKind
+from llm_proxy.runtime.orchestrator import RuntimeOrchestrator
+from llm_proxy.runtime.session_store import InMemoryRuntimeSessionStore
 
 
 @pytest.fixture
@@ -27,7 +27,7 @@ def test_turn_start_logs_user_message(orch: RuntimeOrchestrator) -> None:
 
 
 def test_exit_plan_consumed_not_forwarded(orch: RuntimeOrchestrator) -> None:
-    from claude_proxy.runtime.policies import RuntimeOrchestrationPolicies, UserMessageStartMode
+    from llm_proxy.runtime.policies import RuntimeOrchestrationPolicies, UserMessageStartMode
     from dataclasses import replace
 
     orch._policies = replace(orch._policies, user_message_from_idle=UserMessageStartMode.PLANNING)
@@ -55,7 +55,7 @@ def test_bash_forwarded_in_executing(orch: RuntimeOrchestrator) -> None:
 
 
 def test_invalid_action_raises(orch: RuntimeOrchestrator) -> None:
-    from claude_proxy.runtime.policies import UserMessageStartMode
+    from llm_proxy.runtime.policies import UserMessageStartMode
     from dataclasses import replace
 
     orch._policies = replace(orch._policies, user_message_from_idle=UserMessageStartMode.PLANNING)

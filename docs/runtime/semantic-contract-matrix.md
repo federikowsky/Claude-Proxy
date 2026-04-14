@@ -2,7 +2,7 @@
 
 This matrix is the **implementation contract** between:
 
-- capability registry (`claude_proxy/capabilities/`),
+- capability registry (`llm_proxy/capabilities/`),
 - tool / action classification (`application/tool_classifier.py`, `application/runtime_actions.py`, `runtime/classifier.py`),
 - input normalization (`capabilities/tool_use_normalize.py`, `capabilities/tool_use_prepare.py`),
 - orchestration state machine (`runtime/state_machine.py`),
@@ -34,7 +34,7 @@ This matrix is the **implementation contract** between:
 
 | Capability id | Recognized | Validated | Normalized | Classified (event) | Model emits | Control API | Persisted | Replay | Forward UI | Consumed | Policy (YAML) | Invalid schema | Semantic misuse | Telemetry |
 |---------------|------------|-----------|------------|--------------------|--------------|-------------|-----------|--------|------------|----------|---------------|----------------|-----------------|-----------|
-| `interactive_ask_user_question` | Name + `INTERACTIVE_QUESTION` contract | `strict` raises; `repair` coerces; `forward_raw` skips | Yes (`orchestrator`) | `STATE_TRANSITION` → `MODEL_REQUEST_APPROVAL_PROPOSED` | Yes | approve / reject / … | Yes | Yes | No (orchestration path) | Yes | `bridge.runtime_policies.interactive_input_repair` | `RuntimeOrchestrationError` in `strict` | Wrong state → `invalid_runtime_transition` (422) | `claude_proxy.capabilities` repair logs |
+| `interactive_ask_user_question` | Name + `INTERACTIVE_QUESTION` contract | `strict` raises; `repair` coerces; `forward_raw` skips | Yes (`orchestrator`) | `STATE_TRANSITION` → `MODEL_REQUEST_APPROVAL_PROPOSED` | Yes | approve / reject / … | Yes | Yes | No (orchestration path) | Yes | `bridge.runtime_policies.interactive_input_repair` | `RuntimeOrchestrationError` in `strict` | Wrong state → `invalid_runtime_transition` (422) | `llm_proxy.capabilities` repair logs |
 | `permission_request_sdk` | Registry | No JSON-schema validator (v1) | No | `MODEL_REQUEST_PERMISSION_PROPOSED` | Yes | grant / deny | Yes | Yes | No | Yes | transition policies `permission_denied` | — | Invalid transition | `http` + domain errors |
 | `plan_exit_exit_plan_mode` | Registry + `EXIT_PLAN` contract | `strict` / `repair` | Yes | `MODEL_EXIT_PLAN_PROPOSED` | Yes | — | Yes | Yes | No | Yes | `plan_exit_target` | `RuntimeOrchestrationError` | Invalid transition | repair logs |
 | `plan_enter` | Registry | — | No | `MODEL_ENTER_PLAN_PROPOSED` | Yes | — | Yes | Yes | No | Yes | `user_message_from_idle` (idle entry related) | — | — | — |
@@ -65,13 +65,13 @@ This matrix is the **implementation contract** between:
 |--------|---------------------|-----------------|---------------------------|
 | Whole-block phrases: “I approve”, “permission granted”, “plan complete”, “done” (normalized) | **None** | `bridge.runtime_policies.text_control_attempt_policy`: `ignore` / `warn` / `block` | `text_control_attempt_blocked` (`TextControlAttemptBlockedError`, HTTP 422) |
 
-Implementation: `claude_proxy/capabilities/text_control.py`. `warn` emits structured JSON on the `claude_proxy.text_control` logger. No transition map involvement.
+Implementation: `llm_proxy/capabilities/text_control.py`. `warn` emits structured JSON on the `llm_proxy.text_control` logger. No transition map involvement.
 
 ---
 
 ## Executable coverage
 
-- **Code:** `claude_proxy/capabilities/coverage_matrix.py` — `REQUIRED_TESTS_BY_CAPABILITY_ID` must equal the set of registry ids (`validate_test_manifest_matches_registry`).
+- **Code:** `llm_proxy/capabilities/coverage_matrix.py` — `REQUIRED_TESTS_BY_CAPABILITY_ID` must equal the set of registry ids (`validate_test_manifest_matches_registry`).
 - **Artifact:** `docs/runtime/capability-coverage.json` — registry rows, MCP pattern row, `non_tool_families` closure (regenerate with `write_coverage_artifact` after registry changes).
 - **Tests:** `tests/unit/test_capability_registry.py` (`test_coverage_test_manifest_matches_registry`, `test_exported_coverage_json_registry_ids_match_singleton`).
 
@@ -131,4 +131,4 @@ All are subclasses of `BridgeError` with stable `error_type` for HTTP/SSE envelo
 
 1. Update `builtins.py` + `REQUIRED_TESTS_BY_CAPABILITY_ID` in `coverage_matrix.py` + regenerate `docs/runtime/capability-coverage.json`.
 2. Add/adjust tests in the rows above.
-3. If YAML surface changes, update `infrastructure/config.py` + `policy_binding.py` + sample `config/claude-proxy.yaml`.
+3. If YAML surface changes, update `infrastructure/config.py` + `policy_binding.py` + sample `config/llm-proxy.yaml`.

@@ -5,9 +5,9 @@ from dataclasses import replace
 
 import pytest
 
-from claude_proxy.domain.enums import Role
-from claude_proxy.domain.errors import ProviderProtocolError
-from claude_proxy.domain.models import (
+from llm_proxy.domain.enums import Role
+from llm_proxy.domain.errors import ProviderProtocolError
+from llm_proxy.domain.models import (
     ChatRequest,
     ContentBlockDeltaEvent,
     ContentBlockStartEvent,
@@ -30,11 +30,11 @@ from claude_proxy.domain.models import (
     ToolDefinition,
     ToolUseBlock,
 )
-from claude_proxy.infrastructure.providers.anthropic import (
+from llm_proxy.infrastructure.providers.anthropic import (
     AnthropicStreamNormalizer,
     AnthropicTranslator,
 )
-from claude_proxy.infrastructure.providers.sse import IncrementalSseParser, SseMessage
+from llm_proxy.infrastructure.providers.sse import IncrementalSseParser, SseMessage
 from tests.conftest import chunk_bytes, collect_list
 
 

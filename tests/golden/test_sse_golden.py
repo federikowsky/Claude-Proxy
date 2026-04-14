@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from claude_proxy.application.policies import CompatibilityNormalizer, StreamEventSequencer
-from claude_proxy.application.sse import AnthropicSseEncoder
-from claude_proxy.domain.enums import CompatibilityMode
-from claude_proxy.domain.models import ChatRequest, Message, ModelInfo
-from claude_proxy.domain.enums import Role
-from claude_proxy.infrastructure.providers.openrouter import OpenRouterStreamNormalizer
-from claude_proxy.infrastructure.providers.sse import IncrementalSseParser
+from llm_proxy.application.policies import CompatibilityNormalizer, StreamEventSequencer
+from llm_proxy.application.sse import AnthropicSseEncoder
+from llm_proxy.domain.enums import CompatibilityMode
+from llm_proxy.domain.models import ChatRequest, Message, ModelInfo
+from llm_proxy.domain.enums import Role
+from llm_proxy.infrastructure.providers.openrouter import OpenRouterStreamNormalizer
+from llm_proxy.infrastructure.providers.sse import IncrementalSseParser
 from tests.conftest import chunk_bytes, collect_bytes
 
 

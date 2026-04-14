@@ -4,9 +4,9 @@ from dataclasses import replace
 
 import pytest
 
-from claude_proxy.runtime.errors import InvalidRuntimeTransitionError
-from claude_proxy.runtime.events import RuntimeEventKind
-from claude_proxy.runtime.policies import (
+from llm_proxy.runtime.errors import InvalidRuntimeTransitionError
+from llm_proxy.runtime.events import RuntimeEventKind
+from llm_proxy.runtime.policies import (
     RuntimeOrchestrationPolicies,
     UserMessageStartMode,
     PlanExitTarget,
@@ -15,8 +15,8 @@ from claude_proxy.runtime.policies import (
     ToolFailedResolution,
     SubtaskFailedResolution,
 )
-from claude_proxy.runtime.state import RuntimeState
-from claude_proxy.runtime.state_machine import apply_runtime_transition, idle_session
+from llm_proxy.runtime.state import RuntimeState
+from llm_proxy.runtime.state_machine import apply_runtime_transition, idle_session
 
 
 def _p(**kwargs) -> RuntimeOrchestrationPolicies:

@@ -1,4 +1,4 @@
-# Claude-Proxy — Claude Code Compatibility Runtime Bridge
+# LLM-Proxy — Claude Code Compatibility Runtime Bridge
 ## Freeze Specification
 ### Status: Canonical Implementation Spec
 ### Scope: Production-ready feature, not demo, not MVP, not V0

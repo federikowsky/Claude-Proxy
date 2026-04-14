@@ -5,13 +5,13 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from claude_proxy.domain.models import ContentBlockStartEvent, MessageStartEvent, TextBlock, ToolUseBlock
-from claude_proxy.domain.enums import Role
-from claude_proxy.domain.models import ChatResponse, Usage
-from claude_proxy.runtime.event_log import InMemoryRuntimeEventLog
-from claude_proxy.runtime.orchestrator import RuntimeOrchestrator
-from claude_proxy.runtime.session_store import InMemoryRuntimeSessionStore
-from claude_proxy.runtime.stream import runtime_orchestrate_stream
+from llm_proxy.domain.models import ContentBlockStartEvent, MessageStartEvent, TextBlock, ToolUseBlock
+from llm_proxy.domain.enums import Role
+from llm_proxy.domain.models import ChatResponse, Usage
+from llm_proxy.runtime.event_log import InMemoryRuntimeEventLog
+from llm_proxy.runtime.orchestrator import RuntimeOrchestrator
+from llm_proxy.runtime.session_store import InMemoryRuntimeSessionStore
+from llm_proxy.runtime.stream import runtime_orchestrate_stream
 
 
 async def _src(*events) -> AsyncIterator:

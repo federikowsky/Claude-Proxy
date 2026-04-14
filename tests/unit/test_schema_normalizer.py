@@ -5,7 +5,7 @@ import logging
 
 import pytest
 
-from claude_proxy.domain.serialization import normalize_tool_schema
+from llm_proxy.domain.serialization import normalize_tool_schema
 
 
 class TestNormalizeToolSchemaMissingOrInvalid:
@@ -30,17 +30,17 @@ class TestNormalizeToolSchemaMissingOrInvalid:
         assert result == {"type": "object", "properties": {}}
 
     def test_missing_schema_logged(self, caplog: pytest.LogCaptureFixture) -> None:
-        with caplog.at_level(logging.DEBUG, logger="claude_proxy.serialization"):
+        with caplog.at_level(logging.DEBUG, logger="llm_proxy.serialization"):
             normalize_tool_schema(None, tool_name="tool_x")
         assert any("schema_missing" in r.getMessage() for r in caplog.records)
 
     def test_invalid_type_logged(self, caplog: pytest.LogCaptureFixture) -> None:
-        with caplog.at_level(logging.DEBUG, logger="claude_proxy.serialization"):
+        with caplog.at_level(logging.DEBUG, logger="llm_proxy.serialization"):
             normalize_tool_schema("bad", tool_name="tool_x")
         assert any("schema_invalid_type" in r.getMessage() for r in caplog.records)
 
     def test_empty_mapping_logged(self, caplog: pytest.LogCaptureFixture) -> None:
-        with caplog.at_level(logging.DEBUG, logger="claude_proxy.serialization"):
+        with caplog.at_level(logging.DEBUG, logger="llm_proxy.serialization"):
             normalize_tool_schema({}, tool_name="tool_y")
         assert any("schema_empty" in r.getMessage() for r in caplog.records)
 
@@ -82,12 +82,12 @@ class TestNormalizeToolSchemaObjectNormalization:
         assert result["additionalProperties"] is False
 
     def test_properties_injection_logged(self, caplog: pytest.LogCaptureFixture) -> None:
-        with caplog.at_level(logging.DEBUG, logger="claude_proxy.serialization"):
+        with caplog.at_level(logging.DEBUG, logger="llm_proxy.serialization"):
             normalize_tool_schema({"type": "object"}, tool_name="my_tool")
         assert any("schema_properties_injected" in r.getMessage() for r in caplog.records)
 
     def test_type_injection_logged(self, caplog: pytest.LogCaptureFixture) -> None:
-        with caplog.at_level(logging.DEBUG, logger="claude_proxy.serialization"):
+        with caplog.at_level(logging.DEBUG, logger="llm_proxy.serialization"):
             normalize_tool_schema({"properties": {}}, tool_name="t")
         assert any("schema_type_injected" in r.getMessage() for r in caplog.records)
 

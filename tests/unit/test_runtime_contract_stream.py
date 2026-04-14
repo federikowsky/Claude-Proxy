@@ -16,10 +16,10 @@ from typing import Any
 
 import pytest
 
-from claude_proxy.application.runtime_contract import RuntimeContractEnforcer
-from claude_proxy.domain.enums import ActionPolicy, Role, RuntimeActionType, ThinkingPassthroughMode
-from claude_proxy.domain.errors import RuntimeContractError
-from claude_proxy.domain.models import (
+from llm_proxy.application.runtime_contract import RuntimeContractEnforcer
+from llm_proxy.domain.enums import ActionPolicy, Role, RuntimeActionType, ThinkingPassthroughMode
+from llm_proxy.domain.errors import RuntimeContractError
+from llm_proxy.domain.models import (
     ChatResponse,
     ContentBlockStartEvent,
     ContentBlockStopEvent,
@@ -121,7 +121,7 @@ async def test_stream_warn_logs_and_passes(caplog: pytest.LogCaptureFixture) -> 
     model = _model(control=ActionPolicy.WARN)
     block = ToolUseBlock(id="tu_1", name="TodoWrite", input={})
     event = ContentBlockStartEvent(index=0, block=block)
-    with caplog.at_level(logging.WARNING, logger="claude_proxy.contract"):
+    with caplog.at_level(logging.WARNING, logger="llm_proxy.contract"):
         result = await _collect(enforcer.enforce_stream(_source(event), model))
     # Event must pass through unchanged
     assert len(result) == 1
@@ -135,7 +135,7 @@ async def test_stream_warn_bash_emulation_logs_and_passes(caplog: pytest.LogCapt
     model = _model(generic=ActionPolicy.WARN)
     block = ToolUseBlock(id="tu_1", name="bash", input={"command": "exit 0"})
     event = ContentBlockStartEvent(index=0, block=block)
-    with caplog.at_level(logging.WARNING, logger="claude_proxy.contract"):
+    with caplog.at_level(logging.WARNING, logger="llm_proxy.contract"):
         result = await _collect(enforcer.enforce_stream(_source(event), model))
     assert len(result) == 1
     assert result[0] is event

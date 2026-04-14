@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from claude_proxy.infrastructure.http import SharedAsyncClientManager
+from llm_proxy.infrastructure.http import SharedAsyncClientManager
 
 
 @pytest.mark.asyncio

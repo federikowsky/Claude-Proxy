@@ -1,4 +1,4 @@
-# Claude Proxy — Specs V2
+# LLM Proxy — Specs V2
 ## Production-ready transparent Anthropic ↔ OpenRouter bridge
 ## Delta spec to apply on top of the existing implementation
 
@@ -460,7 +460,7 @@ Default mode must be `transparent`.
 
 Apply these concrete changes to the current codebase.
 
-## 15.1 `claude_proxy/domain/models.py`
+## 15.1 `llm_proxy/domain/models.py`
 Refactor the domain model from text-centric to structured canonical content.
 
 Required additions:
@@ -477,7 +477,7 @@ Keep:
 - `dataclass(slots=True)` where appropriate
 - immutable structures where possible
 
-## 15.2 `claude_proxy/domain/ports.py`
+## 15.2 `llm_proxy/domain/ports.py`
 Update ports to support:
 - stream and non-stream completions
 - richer event/content structures
@@ -491,7 +491,7 @@ Suggested ports:
 - `SseEncoder`
 - `ResponseEncoder`
 
-## 15.3 `claude_proxy/application/services.py`
+## 15.3 `llm_proxy/application/services.py`
 Refactor service orchestration to:
 - support both stream and non-stream flows
 - preserve full canonical content
@@ -499,7 +499,7 @@ Refactor service orchestration to:
 - invoke translation + normalization + encoding in separate steps
 - avoid text-only aggregation
 
-## 15.4 `claude_proxy/application/policies.py`
+## 15.4 `llm_proxy/application/policies.py`
 Replace MVP-style drop policies with transparent compatibility policies.
 
 Required policy families:
@@ -508,7 +508,7 @@ Required policy families:
 - block preservation policy
 - compatibility mode policy
 
-## 15.5 `claude_proxy/application/sse.py`
+## 15.5 `llm_proxy/application/sse.py`
 Refactor SSE encoder to support:
 - text blocks
 - tool use blocks
@@ -520,14 +520,14 @@ Refactor SSE encoder to support:
 
 Do not hardcode a single text block assumption.
 
-## 15.6 `claude_proxy/api/routes/messages.py`
+## 15.6 `llm_proxy/api/routes/messages.py`
 Refactor endpoint to:
 - accept full supported request schema
 - support `stream=true` and `stream=false`
 - return correct content type for each mode
 - stop rejecting advanced fields just because of old MVP constraints
 
-## 15.7 `claude_proxy/infrastructure/providers/openrouter.py`
+## 15.7 `llm_proxy/infrastructure/providers/openrouter.py`
 Refactor adapter into clearer responsibilities, even if kept in one file temporarily:
 - request translation
 - provider HTTP call
@@ -549,7 +549,7 @@ Long-term preferred split:
 
 But do not force a giant rewrite if incremental refactor is better.
 
-## 15.8 `claude_proxy/infrastructure/config.py`
+## 15.8 `llm_proxy/infrastructure/config.py`
 Extend config to support:
 - compatibility mode
 - model capability metadata

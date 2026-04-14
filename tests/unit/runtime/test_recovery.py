@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from claude_proxy.runtime.event_log import InMemoryRuntimeEventLog
-from claude_proxy.runtime.events import RuntimeEvent, RuntimeEventKind
-from claude_proxy.runtime.policies import RuntimeOrchestrationPolicies, UserMessageStartMode
-from claude_proxy.runtime.recovery import replay_events
-from claude_proxy.runtime.state import RuntimeState
-from claude_proxy.runtime.state_machine import idle_session
+from llm_proxy.runtime.event_log import InMemoryRuntimeEventLog
+from llm_proxy.runtime.events import RuntimeEvent, RuntimeEventKind
+from llm_proxy.runtime.policies import RuntimeOrchestrationPolicies, UserMessageStartMode
+from llm_proxy.runtime.recovery import replay_events
+from llm_proxy.runtime.state import RuntimeState
+from llm_proxy.runtime.state_machine import idle_session
 
 
 def test_replay_rebuilds_executing_with_tool_cycle() -> None:
@@ -29,7 +29,7 @@ def test_replay_from_checkpoint_base() -> None:
     pol = RuntimeOrchestrationPolicies()
     base = idle_session("c1")
     from dataclasses import replace
-    from claude_proxy.runtime.state import sync_modes_with_state, ModeQualifiers
+    from llm_proxy.runtime.state import sync_modes_with_state, ModeQualifiers
 
     base = replace(
         base,

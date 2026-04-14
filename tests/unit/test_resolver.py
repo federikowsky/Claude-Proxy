@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from claude_proxy.domain.errors import RoutingError
-from claude_proxy.infrastructure.resolvers import StaticModelResolver
+from llm_proxy.domain.errors import RoutingError
+from llm_proxy.infrastructure.resolvers import StaticModelResolver
 
 
 def test_resolver_returns_model_info(settings) -> None:

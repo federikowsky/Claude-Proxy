@@ -1,0 +1,130 @@
+server:
+  host: 127.0.0.1
+  port: 3892
+  log_level: info
+  request_timeout_seconds: 600
+  debug: false
+
+routing:
+  default_model: qwen/qwen3.6-plus:free
+  fallback_model: qwen/qwen3.6-plus:free
+
+bridge:
+  compatibility_mode: compat
+  emit_usage: true
+  passthrough_request_fields:
+    - output_config
+    - context_management
+    - provider
+  runtime_orchestration_enabled: false
+  runtime_persistence:
+    backend: sqlite
+    sqlite_path: data/llm_proxy_runtime.db
+  runtime_policies:
+    user_message_from_idle: executing
+    plan_exit_target: executing
+    user_rejected: planning
+    permission_denied: paused
+    tool_failed: executing
+    subtask_failed: orchestrating
+    timeout_resolution: failed
+    interactive_input_repair: repair
+    text_control_attempt_policy: ignore
+
+providers:
+  openrouter:
+    enabled: true
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    connect_timeout_seconds: 10
+    read_timeout_seconds: 300
+    write_timeout_seconds: 30
+    pool_timeout_seconds: 10
+    max_connections: 100
+    max_keepalive_connections: 20
+    app_name: llm-proxy
+    app_url: null
+    debug_echo_upstream_body: false
+
+  anthropic:
+    enabled: false
+    base_url: https://api.anthropic.com/v1
+    api_key_env: ANTHROPIC_API_KEY
+    connect_timeout_seconds: 10
+    read_timeout_seconds: 300
+    write_timeout_seconds: 30
+    pool_timeout_seconds: 10
+    max_connections: 100
+    max_keepalive_connections: 20
+    anthropic_version: "2023-06-01"
+    anthropic_beta: null
+
+  nvidia:
+    enabled: false
+    base_url: https://integrate.api.nvidia.com/v1
+    api_key_env: NVIDIA_API_KEY
+    connect_timeout_seconds: 10
+    read_timeout_seconds: 300
+    write_timeout_seconds: 30
+    pool_timeout_seconds: 10
+    max_connections: 100
+    max_keepalive_connections: 20
+
+  gemini:
+    enabled: false
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    api_key_env: GEMINI_API_KEY
+    connect_timeout_seconds: 10
+    read_timeout_seconds: 300
+    write_timeout_seconds: 30
+    pool_timeout_seconds: 10
+    max_connections: 100
+    max_keepalive_connections: 20
+
+models:
+  nvidia/nemotron-3-super-120b-a12b:free:
+    provider: openrouter
+    enabled: true
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: true
+    thinking_passthrough_mode: native_only
+
+  qwen/qwen3.6-plus:free:
+    provider: openrouter
+    enabled: true
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: true
+    thinking_passthrough_mode: native_only
+
+  minimax/minimax-m2.5:free:
+    provider: openrouter
+    enabled: true
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: true
+    thinking_passthrough_mode: native_only
+
+  stepfun/step-3.5-flash:free:
+    provider: openrouter
+    enabled: true
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: true
+    thinking_passthrough_mode: "off"
+    unsupported_request_fields:
+      - output_config
+
+  claude-sonnet-4-20250514:
+    provider: anthropic
+    enabled: false
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: true
+    thinking_passthrough_mode: full

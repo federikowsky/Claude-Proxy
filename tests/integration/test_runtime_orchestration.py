@@ -6,8 +6,8 @@ import httpx
 import pytest
 import yaml
 
-from claude_proxy.infrastructure.config import load_settings
-from claude_proxy.main import create_app
+from llm_proxy.infrastructure.config import load_settings
+from llm_proxy.main import create_app
 from tests.conftest import MockAsyncByteStream, base_config
 
 

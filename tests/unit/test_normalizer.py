@@ -4,9 +4,9 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from claude_proxy.application.policies import CompatibilityNormalizer
-from claude_proxy.domain.enums import CompatibilityMode, Role, ThinkingPassthroughMode
-from claude_proxy.domain.models import (
+from llm_proxy.application.policies import CompatibilityNormalizer
+from llm_proxy.domain.enums import CompatibilityMode, Role, ThinkingPassthroughMode
+from llm_proxy.domain.models import (
     ChatRequest,
     ChatResponse,
     ContentBlockDeltaEvent,

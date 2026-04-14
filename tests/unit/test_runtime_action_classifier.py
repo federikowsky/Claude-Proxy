@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import pytest
 
-from claude_proxy.application.runtime_actions import RuntimeActionClassifier
-from claude_proxy.domain.enums import RuntimeActionType, ToolCategory
-from claude_proxy.domain.models import ToolUseBlock
+from llm_proxy.application.runtime_actions import RuntimeActionClassifier
+from llm_proxy.domain.enums import RuntimeActionType, ToolCategory
+from llm_proxy.domain.models import ToolUseBlock
 
 
 def _block(name: str, tool_input: object = None) -> ToolUseBlock:

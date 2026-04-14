@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from claude_proxy.runtime.errors import RuntimeInvariantViolationError
-from claude_proxy.runtime.invariants import assert_runtime_invariants
-from claude_proxy.runtime.state import (
+from llm_proxy.runtime.errors import RuntimeInvariantViolationError
+from llm_proxy.runtime.invariants import assert_runtime_invariants
+from llm_proxy.runtime.state import (
     ModeQualifiers,
     PendingApproval,
     PendingPermission,
