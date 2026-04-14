@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from llm_proxy.api.errors import install_error_handlers
 from llm_proxy.api.http_debug import install_http_debug_middleware
 from llm_proxy.api.routes.health import router as health_router
+from llm_proxy.api.routes.models import router as models_router
 from llm_proxy.api.routes.messages import router as messages_router
 from llm_proxy.api.routes.chat_completions import router as chat_completions_router
 from llm_proxy.api.routes.runtime_control import router as runtime_control_router
@@ -106,6 +107,7 @@ def create_app(
     app.state.runtime_orchestrator = runtime_orchestrator
     app.state.runtime_sqlite = runtime_sqlite
     app.include_router(health_router)
+    app.include_router(models_router)
     app.include_router(messages_router)
     app.include_router(chat_completions_router)
     app.include_router(runtime_control_router)
