@@ -32,6 +32,15 @@ providers:
     app_name: llm-proxy
     app_url: null
     debug_echo_upstream_body: false
+    # Extra HTTP headers sent with every request to this provider.
+    # custom_headers:
+    #   X-Custom-Header: "value"
+    # Override OpenAI finish_reason -> Anthropic stop_reason mapping.
+    # Default: {stop: end_turn, length: max_tokens, tool_calls: tool_use,
+    #           content_filter: end_turn, function_call: tool_use}
+    # finish_reason_map:
+    #   stop: end_turn
+    #   length: max_tokens
 
   anthropic:
     enabled: false
@@ -150,6 +159,14 @@ models:
     supports_tools: true
     supports_thinking: true
     thinking_passthrough_mode: native_only
+    # Per-model thinking extraction — tags used to detect thinking in streamed text.
+    # Set to null to disable tag-based extraction (e.g. models that never use think tags).
+    # thinking_open_tag: "<think>"
+    # thinking_close_tag: "</think>"
+    # Response delta field names checked for structured reasoning content.
+    # thinking_extraction_fields:
+    #   - reasoning_content
+    #   - reasoning
 
   o3:
     provider: openai
@@ -168,3 +185,17 @@ models:
     supports_tools: true
     supports_thinking: true
     thinking_passthrough_mode: native_only
+
+  # Example: model with custom thinking tags (e.g. DeepSeek R1 uses <reasoning>)
+  # deepseek/deepseek-r1:
+  #   provider: openrouter
+  #   enabled: false
+  #   supports_stream: true
+  #   supports_nonstream: true
+  #   supports_tools: true
+  #   supports_thinking: true
+  #   thinking_passthrough_mode: full
+  #   thinking_open_tag: "<reasoning>"
+  #   thinking_close_tag: "</reasoning>"
+  #   thinking_extraction_fields:
+  #     - reasoning_content
