@@ -84,6 +84,9 @@ class ProviderSettings(BaseModel):
     app_name: str = "claude-proxy"
     app_url: str | None = None
     debug_echo_upstream_body: bool = False
+    # Anthropic-specific (ignored by other providers)
+    anthropic_version: str | None = None
+    anthropic_beta: str | None = None
 
 
 class ModelSettings(BaseModel):

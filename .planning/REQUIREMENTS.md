@@ -1,6 +1,6 @@
 # REQUIREMENTS.md
 
-## Milestone: Dual-Provider Architecture
+## Milestone: Multi-Provider Architecture
 
 ### R-01: Dual-protocol ingress
 - `POST /v1/messages` (Anthropic Messages API) — **existing**

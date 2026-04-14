@@ -23,11 +23,10 @@ from claude_proxy.domain.models import (
     ToolUseBlock,
 )
 from claude_proxy.infrastructure.providers.openrouter import (
-    IncrementalSseParser,
     OpenRouterStreamNormalizer,
     OpenRouterTranslator,
-    SseMessage,
 )
+from claude_proxy.infrastructure.providers.sse import IncrementalSseParser, SseMessage
 from tests.conftest import chunk_bytes, collect_list
 
 

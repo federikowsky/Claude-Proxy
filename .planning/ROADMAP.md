@@ -1,6 +1,6 @@
 # ROADMAP.md
 
-## Milestone 1: Dual-Provider Architecture
+## Milestone 1: Multi-Provider Architecture
 
 ### Phase 1: Direct Anthropic Provider Adapter
 **Goal:** Add a native Anthropic API adapter alongside the existing OpenRouter adapter.

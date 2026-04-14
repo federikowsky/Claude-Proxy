@@ -10,7 +10,8 @@ from claude_proxy.application.sse import AnthropicSseEncoder
 from claude_proxy.domain.enums import CompatibilityMode
 from claude_proxy.domain.models import ChatRequest, Message, ModelInfo
 from claude_proxy.domain.enums import Role
-from claude_proxy.infrastructure.providers.openrouter import IncrementalSseParser, OpenRouterStreamNormalizer
+from claude_proxy.infrastructure.providers.openrouter import OpenRouterStreamNormalizer
+from claude_proxy.infrastructure.providers.sse import IncrementalSseParser
 from tests.conftest import chunk_bytes, collect_bytes
 
 
