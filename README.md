@@ -1,32 +1,36 @@
 # LLM Proxy
 
-A local, multi-provider reverse proxy that exposes an **Anthropic Messages-compatible API** surface and translates requests to any supported upstream provider. Designed as a transparent gateway for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and other Anthropic-style clients.
+A local, multi-provider reverse proxy that exposes both **Anthropic Messages** and **OpenAI Chat Completions** API surfaces, translating requests to any supported upstream provider. Designed as a transparent gateway for [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), and any OpenAI- or Anthropic-compatible client.
 
 ```
-Client (Claude Code, SDK, curl)
+Client (Claude Code, Codex CLI, SDK, curl)
         │
         ▼
-┌─────────────────────┐
-│    LLM Proxy      │   Anthropic Messages API
-│  POST /v1/messages   │──────────────────────────────►  OpenRouter
-│  POST /v1/messages/  │──────────────────────────────►  Anthropic (direct)
-│       count_tokens   │──────────────────────────────►  NVIDIA NIM
-│  GET  /health        │──────────────────────────────►  Google Gemini
-└─────────────────────┘
+┌────────────────────────────────┐
+│          LLM Proxy             │
+│  POST /v1/messages             │   Anthropic ingress
+│  POST /v1/chat/completions     │   OpenAI ingress        ──►  OpenRouter
+│  POST /v1/messages/count_tokens│                          ──►  Anthropic
+│  GET  /health                  │                          ──►  OpenAI
+│                                │                          ──►  NVIDIA NIM
+│                                │                          ──►  Google Gemini
+└────────────────────────────────┘
 ```
 
 ## Why
 
 LLM providers speak different wire protocols. Claude Code expects the Anthropic Messages API. This proxy bridges that gap:
 
-- **Multi-provider routing** — route any model to OpenRouter, Anthropic, NVIDIA NIM, or Gemini through a single endpoint
+- **Multi-provider routing** — route any model to OpenRouter, Anthropic, OpenAI, NVIDIA NIM, or Gemini through a single endpoint
+- **Dual ingress** — accept both Anthropic Messages and OpenAI Chat Completions requests; same model, any client
 - **Protocol translation** — each provider adapter handles auth, payload format, and SSE normalization transparently
 - **Structured content preservation** — text, tool use, tool results, and thinking blocks survive the round-trip without flattening
 - **Model-aware request preparation** — per-model stripping of unsupported fields happens before the provider handoff, not as ad-hoc patches
 
 ## Features
 
-- Anthropic Messages API surface (`/v1/messages`, `/v1/messages/count_tokens`, `/health`)
+- Dual API surface: Anthropic Messages (`/v1/messages`) and OpenAI Chat Completions (`/v1/chat/completions`)
+- Token counting (`/v1/messages/count_tokens`) and health check (`/health`)
 - Streaming (`stream=true`) and non-streaming (`stream=false`) responses
 - Incremental SSE parsing — no full-response buffering
 - Structured content blocks: `text`, `tool_use`, `tool_result`, `thinking`
@@ -44,6 +48,7 @@ LLM providers speak different wire protocols. Claude Code expects the Anthropic 
 |---|---|---|---|---|
 | **OpenRouter** | `OpenRouterProvider` | Bearer | Anthropic Messages wrapper | Probe (max_tokens=1) |
 | **Anthropic** | `AnthropicProvider` | x-api-key | Native Anthropic Messages | Native `/messages/count_tokens` |
+| **OpenAI** | `OpenAICompatProvider` | Bearer | OpenAI Chat Completions | Probe (max_tokens=1) |
 | **NVIDIA NIM** | `OpenAICompatProvider` | Bearer | OpenAI Chat Completions | Probe (max_tokens=1) |
 | **Google Gemini** | `OpenAICompatProvider` | Bearer | OpenAI Chat Completions | Probe (max_tokens=1) |
 
@@ -75,6 +80,22 @@ The proxy starts on `http://127.0.0.1:8082` by default.
 ```bash
 export ANTHROPIC_BASE_URL=http://127.0.0.1:8082
 # Claude Code now routes through the proxy
+```
+
+### Use with Codex CLI
+
+```bash
+export OPENAI_BASE_URL=http://127.0.0.1:8082/v1
+export OPENAI_API_KEY=any  # Not checked by the proxy
+# Codex CLI now routes through the proxy
+```
+
+### Use with Codex CLI
+
+```bash
+export OPENAI_BASE_URL=http://127.0.0.1:8082/v1
+export OPENAI_API_KEY=any  # Not checked by the proxy
+# Codex CLI now routes through the proxy
 ```
 
 ### Verify
@@ -142,6 +163,16 @@ providers:
     base_url: https://integrate.api.nvidia.com/v1
     api_key_env: NVIDIA_API_KEY
 
+  openai:
+    enabled: false
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+
+  openai:
+    enabled: false
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+
   gemini:
     enabled: false
     base_url: https://generativelanguage.googleapis.com/v1beta/openai
@@ -195,8 +226,9 @@ models:
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | Health check |
-| `POST` | `/v1/messages` | Anthropic Messages-compatible endpoint (stream and non-stream) |
-| `POST` | `/v1/messages/count_tokens` | Token counting |
+| `POST` | `/v1/messages` | Anthropic Messages endpoint (stream and non-stream) |
+| `POST` | `/v1/chat/completions` | OpenAI Chat Completions endpoint (stream and non-stream) |
+| `POST` | `/v1/messages/count_tokens` | Token counting (Anthropic format) |
 
 ### Runtime Control Plane (optional)
 
@@ -234,13 +266,13 @@ llm_proxy/
 ### Request Flow
 
 ```
-1. FastAPI validates the Anthropic request → ChatRequest
+1. FastAPI validates the request (Anthropic or OpenAI schema) → ChatRequest
 2. Service resolves the target model
 3. RequestPreparer strips unsupported fields per model config
 4. Service runs model-dependent validations
 5. Provider adapter translates to upstream format and sends the request
 6. Response is normalized back to canonical domain events
-7. Application layer encodes Anthropic-compatible JSON or SSE output
+7. Protocol-specific encoder produces the output (Anthropic JSON/SSE or OpenAI JSON/SSE)
 ```
 
 Each provider implements the `ModelProvider` protocol (`stream`, `complete`, `count_tokens`) with a dedicated translator and stream normalizer. The SSE sequencer guarantees at most one content block open at any time.

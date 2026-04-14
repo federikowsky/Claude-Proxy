@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llm-proxy"
-version = "0.1.0"
+version = "1.0.0"
 description = "Multi-protocol LLM reverse proxy with dual ingress (Anthropic Messages + OpenAI Chat Completions) and multi-provider upstream routing."
 readme = "README.md"
 requires-python = ">=3.14"

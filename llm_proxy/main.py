@@ -98,7 +98,7 @@ def create_app(
                 sql.close()
             await client_manager.close()
 
-    app = FastAPI(title="llm-proxy", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="llm-proxy", version="1.0.0", lifespan=lifespan)
     app.state.settings = resolved_settings
     app.state.client_manager = client_manager
     app.state.message_service = message_service
