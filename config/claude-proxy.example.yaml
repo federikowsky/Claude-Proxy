@@ -46,6 +46,28 @@ providers:
     anthropic_version: "2023-06-01"
     anthropic_beta: null
 
+  nvidia:
+    enabled: false
+    base_url: https://integrate.api.nvidia.com/v1
+    api_key_env: NVIDIA_API_KEY
+    connect_timeout_seconds: 10
+    read_timeout_seconds: 300
+    write_timeout_seconds: 30
+    pool_timeout_seconds: 10
+    max_connections: 100
+    max_keepalive_connections: 20
+
+  gemini:
+    enabled: false
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    api_key_env: GEMINI_API_KEY
+    connect_timeout_seconds: 10
+    read_timeout_seconds: 300
+    write_timeout_seconds: 30
+    pool_timeout_seconds: 10
+    max_connections: 100
+    max_keepalive_connections: 20
+
 models:
   anthropic/claude-sonnet-4:
     provider: openrouter
@@ -87,3 +109,23 @@ models:
     supports_tools: true
     supports_thinking: true
     thinking_passthrough_mode: full
+
+  # NVIDIA NIM direct — requires nvidia provider enabled above
+  nvidia/llama-3.3-nemotron-super-49b-v1:
+    provider: nvidia
+    enabled: false
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: false
+    thinking_passthrough_mode: off
+
+  # Gemini direct (OpenAI-compatible) — requires gemini provider enabled above
+  gemini-2.5-flash:
+    provider: gemini
+    enabled: false
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: false
+    thinking_passthrough_mode: off
