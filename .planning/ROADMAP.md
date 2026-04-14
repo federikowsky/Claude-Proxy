@@ -103,5 +103,5 @@ Depends on: Phase 7
 **Requirements:** [R-04, R-05, R-07]
 **Plans:** 2 plans
 Plans:
-- [ ] 08-01-PLAN.md — Config schema + domain model extension
-- [ ] 08-02-PLAN.md — Wire configurable extraction + provider extensibility
+- [x] 08-01-PLAN.md — Config schema + domain model extension
+- [x] 08-02-PLAN.md — Wire configurable extraction + provider extensibility
