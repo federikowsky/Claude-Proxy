@@ -8,9 +8,15 @@ from llm_proxy.infrastructure.config import Settings
 class StaticModelResolver:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self._alias_map: dict[str, str] = {}
+        for name, cfg in settings.models.items():
+            for alias in cfg.aliases:
+                self._alias_map[alias] = name
 
     def resolve(self, requested_model: str | None) -> ModelInfo:
         model_name = requested_model or self._settings.routing.default_model
+        # Resolve alias to canonical model name.
+        model_name = self._alias_map.get(model_name, model_name)
         config = self._settings.models.get(model_name)
         if config is None:
             raise RoutingError(f"model '{model_name}' is not configured")

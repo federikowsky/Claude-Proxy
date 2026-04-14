@@ -89,6 +89,10 @@ class ProviderSettings(BaseModel):
     anthropic_beta: str | None = None
     custom_headers: dict[str, str] = Field(default_factory=dict)
     finish_reason_map: dict[str, str] | None = None
+    # Retry policy for transient provider errors.
+    retry_attempts: int = Field(default=2, ge=0, le=10)
+    retry_backoff_base: float = Field(default=1.0, gt=0)
+    retry_on_status: tuple[int, ...] = (429, 502, 503, 529)
 
 
 class ModelSettings(BaseModel):
@@ -110,6 +114,8 @@ class ModelSettings(BaseModel):
     control_action_policy: ActionPolicy = ActionPolicy.WARN
     orchestration_action_policy: ActionPolicy = ActionPolicy.WARN
     generic_tool_emulation_policy: ActionPolicy = ActionPolicy.WARN
+    # Alternative names that resolve to this model.
+    aliases: tuple[str, ...] = ()
 
 
 class Settings(BaseModel):
@@ -140,6 +146,21 @@ class Settings(BaseModel):
                     f"model '{model_name}': thinking_open_tag and thinking_close_tag "
                     f"must both be set or both be null"
                 )
+        # Validate alias uniqueness.
+        seen_aliases: dict[str, str] = {}
+        for model_name, model in self.models.items():
+            for alias in model.aliases:
+                if alias in self.models:
+                    raise ValueError(
+                        f"alias '{alias}' on model '{model_name}' "
+                        f"conflicts with a model name"
+                    )
+                if alias in seen_aliases:
+                    raise ValueError(
+                        f"alias '{alias}' on model '{model_name}' "
+                        f"conflicts with alias on '{seen_aliases[alias]}'"
+                    )
+                seen_aliases[alias] = model_name
         return self
 
 
