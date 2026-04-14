@@ -6,6 +6,7 @@ from claude_proxy.domain.errors import RoutingError
 from claude_proxy.domain.ports import ModelProvider
 from claude_proxy.infrastructure.config import Settings
 from claude_proxy.infrastructure.http import SharedAsyncClientManager
+from claude_proxy.infrastructure.providers.anthropic import AnthropicProvider, AnthropicTranslator
 from claude_proxy.infrastructure.providers.openrouter import OpenRouterProvider, OpenRouterTranslator
 
 
@@ -18,6 +19,11 @@ def build_provider_registry(
             settings=provider_settings,
             client_manager=client_manager,
             translator=OpenRouterTranslator(),
+        ),
+        "anthropic": lambda provider_settings: AnthropicProvider(
+            settings=provider_settings,
+            client_manager=client_manager,
+            translator=AnthropicTranslator(),
         ),
     }
     providers: dict[str, ModelProvider] = {}

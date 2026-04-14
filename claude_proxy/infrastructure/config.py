@@ -153,7 +153,7 @@ def load_settings(path: str | Path | None = None) -> Settings:
             raise InternalBridgeError(
                 f"missing provider API key env '{env_name}' for '{provider_name}'",
             )
-        provider_config["api_key"] = api_key
+        provider_config["api_key"] = api_key or ""
 
     try:
         return Settings.model_validate(raw)
