@@ -12,6 +12,11 @@
 - Unit + integration tests with mocked transport
 Depends on: —
 Canonical refs: `domain/ports.py`, `infrastructure/providers/openrouter.py`
+**Plans:** 3 plans
+Plans:
+- [ ] 01-01-PLAN.md — SSE Parser Extraction + ProviderSettings Extension
+- [ ] 01-02-PLAN.md — Anthropic Provider Adapter Implementation
+- [ ] 01-03-PLAN.md — Anthropic Adapter Unit + Integration Tests
 
 ### Phase 2: Direct OpenAI Provider Adapter
 **Goal:** Add a native OpenAI API adapter for direct GPT/Codex access.
