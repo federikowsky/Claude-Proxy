@@ -1,258 +1,121 @@
-# claude-proxy
+# Claude Proxy
 
-`claude-proxy` e un proxy locale Python 3.14 compatibile con l'API Anthropic Messages, pensato per far usare Claude Code attraverso OpenRouter senza appiattire il protocollo a testo semplice.
+A local, multi-provider reverse proxy that exposes an **Anthropic Messages-compatible API** surface and translates requests to any supported upstream provider. Designed as a transparent gateway for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and other Anthropic-style clients.
 
-Il proxy riceve richieste Anthropic-compatible su:
+```
+Client (Claude Code, SDK, curl)
+        │
+        ▼
+┌─────────────────────┐
+│    Claude Proxy      │   Anthropic Messages API
+│  POST /v1/messages   │──────────────────────────────►  OpenRouter
+│  POST /v1/messages/  │──────────────────────────────►  Anthropic (direct)
+│       count_tokens   │──────────────────────────────►  NVIDIA NIM
+│  GET  /health        │──────────────────────────────►  Google Gemini
+└─────────────────────┘
+```
 
-- `POST /v1/messages`
-- `POST /v1/messages/count_tokens`
+## Why
 
-Risolve il modello target, prepara la request in modo model-aware, inoltra la chiamata al provider e restituisce una risposta Anthropic-compatible in JSON o SSE.
+LLM providers speak different wire protocols. Claude Code expects the Anthropic Messages API. This proxy bridges that gap:
 
-## Obiettivo
+- **Multi-provider routing** — route any model to OpenRouter, Anthropic, NVIDIA NIM, or Gemini through a single endpoint
+- **Protocol translation** — each provider adapter handles auth, payload format, and SSE normalization transparently
+- **Structured content preservation** — text, tool use, tool results, and thinking blocks survive the round-trip without flattening
+- **Model-aware request preparation** — per-model stripping of unsupported fields happens before the provider handoff, not as ad-hoc patches
 
-Il progetto serve a fare da bridge trasparente tra client Anthropic-style e provider upstream con differenze di protocollo, mantenendo:
+## Features
 
-- streaming end-to-end
-- contenuti strutturati
-- semantica tool
-- usage e stop reasons
-- compatibilita con Claude Code
+- Anthropic Messages API surface (`/v1/messages`, `/v1/messages/count_tokens`, `/health`)
+- Streaming (`stream=true`) and non-streaming (`stream=false`) responses
+- Incremental SSE parsing — no full-response buffering
+- Structured content blocks: `text`, `tool_use`, `tool_result`, `thinking`
+- Full Anthropic event sequence: `message_start` → `content_block_start` → `content_block_delta` → `content_block_stop` → `message_delta` → `message_stop`
+- Usage reporting and stop reason mapping across providers
+- Compatibility modes: `transparent`, `compat`, `debug`
+- Per-model thinking passthrough policy: `full`, `native_only`, `off`
+- Extension field passthrough with per-model stripping
+- Forwarding of `anthropic-beta` and `anthropic-version` headers
+- Optional runtime orchestration control plane (session state machine, event log, tool lifecycle)
 
-Quando il provider o il modello non supportano un campo o un comportamento specifico, il proxy applica adattamenti espliciti e tipizzati invece di trasformazioni implicite o hack nel punto sbagliato della pipeline.
+## Supported Providers
 
-## Stato attuale
+| Provider | Adapter | Auth | Protocol | Token Counting |
+|---|---|---|---|---|
+| **OpenRouter** | `OpenRouterProvider` | Bearer | Anthropic Messages wrapper | Probe (max_tokens=1) |
+| **Anthropic** | `AnthropicProvider` | x-api-key | Native Anthropic Messages | Native `/messages/count_tokens` |
+| **NVIDIA NIM** | `OpenAICompatProvider` | Bearer | OpenAI Chat Completions | Probe (max_tokens=1) |
+| **Google Gemini** | `OpenAICompatProvider` | Bearer | OpenAI Chat Completions | Probe (max_tokens=1) |
 
-Funzionalita implementate:
+Adding a new OpenAI-compatible provider requires only a config block and a builder entry — no new adapter code.
 
-- `GET /health`
-- `POST /v1/messages`
-- `POST /v1/messages/count_tokens`
-- supporto `stream=true`
-- supporto `stream=false`
-- FastAPI + `httpx.AsyncClient` condiviso per processo
-- parsing SSE incrementale
-- normalizzazione dello stream in output Anthropic-compatible
-- normalizzazione strutturata di contenuti e delta
-- request preparation model-aware prima del provider handoff
-- policy di compatibilita `transparent`, `compat`, `debug`
-- thinking passthrough policy per modello
-- stripping per-modello di request fields non supportati upstream
+## Requirements
 
-## Architettura
+- Python ≥ 3.14
+- At least one provider API key
 
-Il codice segue una struttura Ports and Adapters.
-
-Livelli principali:
-
-- `claude_proxy/api`
-  espone gli endpoint HTTP e converte request/response tra FastAPI e dominio
-- `claude_proxy/application`
-  orchestra il request flow, applica request preparation, normalizzazione compat e encoding SSE/JSON
-- `claude_proxy/domain`
-  contiene modelli canonici, enum, errori e porte astratte
-- `claude_proxy/infrastructure`
-  contiene config, resolver, client HTTP condiviso e adapter provider
-
-Flow della request:
-
-1. FastAPI valida e converte la request Anthropic in `ChatRequest`
-2. il service risolve il modello target
-3. il `request_preparer` valida gli extension fields ammessi e adatta la request per il modello scelto
-4. il service applica le validazioni dipendenti dal modello
-5. il provider adapter costruisce il payload upstream e invia la richiesta
-6. la risposta upstream viene normalizzata nel modello canonico
-7. il layer applicativo produce JSON Anthropic-compatible o SSE Anthropic-compatible
-
-## Compatibilita protocollo
-
-Il bridge e provider-agnostic e model-agnostic nel core, ma oggi il primo adapter implementato e OpenRouter.
-
-Contenuti supportati nel modello canonico:
-
-- `text`
-- `tool_use`
-- `tool_result`
-- `thinking`
-
-Eventi/semantiche supportati:
-
-- `message_start`
-- `content_block_start`
-- `content_block_delta`
-- `content_block_stop`
-- `message_delta`
-- `message_stop`
-- `ping`
-- `error`
-- usage
-- stop reason
-- stop sequence
-- forwarding dei request header `anthropic-beta` e `anthropic-version`
-
-Il sequencer SSE garantisce che in output non esistano blocchi annidati: al massimo un content block aperto alla volta.
-
-## Gateway Anthropic per Claude Code
-
-Per usare `claude-proxy` come `ANTHROPIC_BASE_URL` con Claude Code, il proxy espone la surface minima richiesta dal formato Anthropic Messages:
-
-- `POST /v1/messages`
-- `POST /v1/messages/count_tokens`
-
-Inoltre inoltra upstream:
-
-- header `anthropic-beta`
-- header `anthropic-version`
-- query string originale, inclusi casi come `?beta=true`
-
-Questo evita che Claude Code perda funzionalita legate a beta/header negotiation quando parla con il gateway invece che con Anthropic direttamente.
-
-## Limitazione OpenRouter su `count_tokens`
-
-Alla data del 2026-03-22 l'API pubblica OpenRouter espone `POST /messages`, ma non un endpoint nativo `POST /messages/count_tokens`.
-
-Anthropic documenta invece `POST /v1/messages/count_tokens` come endpoint nativo di token counting e mostra esempi con extended thinking, dove il conteggio include il thinking del turno assistant corrente.
-
-Per mantenere compatibilita con Claude Code, il proxy implementa comunque `POST /v1/messages/count_tokens` come shim OpenRouter-specifico:
-
-- invia upstream una richiesta `POST /messages` non-stream
-- forza `max_tokens=1`
-- restituisce al client solo `usage.input_tokens`
-- preserva `tools` e `tool_choice`, che fanno parte dell'input strutturato da contare
-- rimuove il top-level `thinking` dal probe: su OpenRouter il probe passa da un vero `/messages`, quindi extended thinking sarebbe soggetto ai normali vincoli di reasoning budget rispetto a `max_tokens`; con `max_tokens=1` questo rende il probe fragile o invalido
-
-Limite noto:
-
-- il conteggio passa comunque da una request reale verso OpenRouter, quindi introduce un round-trip upstream aggiuntivo e puo comportare billing minimo lato completion
-- quando la request client include extended thinking, il valore restituito dal proxy e una stima best-effort e puo divergere dal `count_tokens` nativo Anthropic, che conta anche i casi con thinking
-
-## Modalita di compatibilita
-
-`bridge.compatibility_mode` controlla il livello di conservativita dell'output:
-
-- `transparent`
-  preserva il piu possibile cio che e rappresentabile in modo sicuro
-- `compat`
-  sopprime strutture che rischiano di rompere client Anthropic-style
-- `debug`
-  stesso comportamento funzionale di `transparent`, con logging extra
-
-## Thinking passthrough
-
-Ogni modello puo impostare `thinking_passthrough_mode`:
-
-- `full`
-  preserva tutto il thinking normalizzato
-- `native_only`
-  preserva solo thinking Anthropic-native affidabile
-- `off`
-  sopprime tutto il thinking in egress
-
-Questo filtro e applicato nel normalizer prima del sequencer e prima dell'encoder SSE.
-
-## Request preparation model-aware
-
-Gli extra top-level della request client che non fanno parte dello schema Anthropic base entrano in `request.extensions`.
-
-`bridge.passthrough_request_fields` definisce quali extension fields il proxy accetta in ingresso.
-
-Dopo la model resolution, il `request_preparer` applica trasformazioni model-aware. Al momento supporta:
-
-- rimozione di campi non supportati con `models.<name>.unsupported_request_fields`
-
-Questo evita il pattern sbagliato:
-
-- accetta qui
-- rifiuta li
-- prova a stripparlo piu tardi nel provider
-
-Il provider adapter riceve gia una request preparata.
-
-## Requisiti
-
-- Python `>= 3.14`
-- una chiave OpenRouter valida in env var
-
-## Installazione
+## Quick Start
 
 ```bash
 python3.14 -m venv .venv
 source .venv/bin/activate
-pip install -e '.[dev]'
+pip install -e .
+
 cp config/claude-proxy.example.yaml config/claude-proxy.yaml
-export OPENROUTER_API_KEY=...
-```
+# Edit config/claude-proxy.yaml: enable providers, set api_key_env values
 
-## Avvio
-
-Metodo semplice, consigliato quando vuoi usare host/porta/log level presi dal file YAML:
-
-```bash
+export OPENROUTER_API_KEY="sk-or-..."
 python -m claude_proxy
 ```
 
-Questo entrypoint legge la config e avvia Uvicorn con:
+The proxy starts on `http://127.0.0.1:8082` by default.
 
-- `host` da `server.host`
-- `port` da `server.port`
-- `log_level` da `server.log_level`
-
-Alternativa equivalente tramite script installato:
+### Use with Claude Code
 
 ```bash
-claude-proxy
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8082
+# Claude Code now routes through the proxy
 ```
 
-Se invece vuoi passare opzioni extra di Uvicorn direttamente, usa Uvicorn in modo esplicito:
+### Verify
 
 ```bash
-uvicorn claude_proxy.main:app --host 127.0.0.1 --port 8082 --reload
+curl http://127.0.0.1:8082/health
+# {"status":"ok"}
 ```
 
-Esempi utili:
+## Configuration
+
+Configuration is loaded from:
+
+1. `config/claude-proxy.yaml` (default path)
+2. Path specified by `CLAUDE_PROXY_CONFIG` environment variable
+
+Any value can be overridden via environment variables with the `CLAUDE_PROXY__` prefix:
 
 ```bash
-uvicorn claude_proxy.main:app --host 0.0.0.0 --port 8082 --workers 1
-uvicorn claude_proxy.main:app --host 127.0.0.1 --port 8082 --reload --log-level debug
-```
-
-Nota pratica:
-
-- `python -m claude_proxy` e comodo per l'avvio standard
-- `uvicorn claude_proxy.main:app ...` e preferibile quando vuoi controllare flag aggiuntive come `--reload`, `--workers`, `--proxy-headers`, ecc.
-
-## Configurazione
-
-La configurazione viene letta da:
-
-- path di default `config/claude-proxy.yaml`
-- oppure env var `CLAUDE_PROXY_CONFIG`
-
-I valori possono essere sovrascritti con env vars del tipo:
-
-```bash
-export CLAUDE_PROXY__SERVER__PORT=8090
+export CLAUDE_PROXY__SERVER__PORT=9000
 export CLAUDE_PROXY__BRIDGE__COMPATIBILITY_MODE=compat
 ```
 
-Esempio di configurazione:
+### Reference
 
 ```yaml
 server:
   host: 127.0.0.1
   port: 8082
-  log_level: info
+  log_level: info                # debug | info | warning | error
   request_timeout_seconds: 120
-  debug: false
+  debug: false                   # enables HTTP request/response preview logging
 
 routing:
   default_model: anthropic/claude-sonnet-4
   fallback_model: anthropic/claude-sonnet-4
 
 bridge:
-  compatibility_mode: transparent
+  compatibility_mode: transparent  # transparent | compat | debug
   emit_usage: true
-  passthrough_request_fields:
+  passthrough_request_fields:      # extension fields accepted at ingress
     - output_config
 
 providers:
@@ -266,9 +129,23 @@ providers:
     pool_timeout_seconds: 10
     max_connections: 100
     max_keepalive_connections: 20
-    app_name: claude-proxy
-    app_url: null
-    debug_echo_upstream_body: false
+
+  anthropic:
+    enabled: false
+    base_url: https://api.anthropic.com/v1
+    api_key_env: ANTHROPIC_API_KEY
+    anthropic_version: "2023-06-01"
+    anthropic_beta: null           # e.g. "prompt-caching-2024-07-31"
+
+  nvidia:
+    enabled: false
+    base_url: https://integrate.api.nvidia.com/v1
+    api_key_env: NVIDIA_API_KEY
+
+  gemini:
+    enabled: false
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    api_key_env: GEMINI_API_KEY
 
 models:
   anthropic/claude-sonnet-4:
@@ -278,109 +155,116 @@ models:
     supports_nonstream: true
     supports_tools: true
     supports_thinking: true
-    thinking_passthrough_mode: full
+    thinking_passthrough_mode: full    # full | native_only | off
 
-  stepfun/step-3.5-flash:free:
-    provider: openrouter
-    enabled: true
+  nvidia/llama-3.3-nemotron-super-49b-v1:
+    provider: nvidia
+    enabled: false
     supports_stream: true
     supports_nonstream: true
     supports_tools: true
-    supports_thinking: true
+    supports_thinking: false
     thinking_passthrough_mode: off
-    unsupported_request_fields:
-      - output_config
+
+  gemini-2.5-flash:
+    provider: gemini
+    enabled: false
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: false
+    thinking_passthrough_mode: off
 ```
 
-## Significato dei campi di config
+### Key Configuration Concepts
 
-`server`
+| Section | Purpose |
+|---|---|
+| `server` | Bind address, port, log level, debug toggle |
+| `routing` | Default and fallback model selection |
+| `bridge.compatibility_mode` | Output conservativeness: `transparent` preserves all safe structures, `compat` suppresses non-standard fields, `debug` adds verbose logging |
+| `bridge.passthrough_request_fields` | Top-level extension fields the proxy accepts at ingress |
+| `providers.<name>` | Upstream connection: base URL, API key env var, timeouts, connection pool |
+| `models.<name>.thinking_passthrough_mode` | Per-model thinking egress policy |
+| `models.<name>.unsupported_request_fields` | Fields stripped before the upstream call for that model |
 
-- parametri di bind e logging del server FastAPI/Uvicorn
+## API Endpoints
 
-`routing`
+### Core
 
-- modello di default e fallback
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | Health check |
+| `POST` | `/v1/messages` | Anthropic Messages-compatible endpoint (stream and non-stream) |
+| `POST` | `/v1/messages/count_tokens` | Token counting |
 
-`bridge.compatibility_mode`
+### Runtime Control Plane (optional)
 
-- modalita di compatibilita dell'output
+Enabled via `bridge.runtime_orchestration_enabled: true`. Provides session-level state machine and event log management.
 
-`bridge.passthrough_request_fields`
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/v1/runtime/sessions` | List sessions |
+| `GET` | `/v1/runtime/sessions/{id}` | Get session state |
+| `GET` | `/v1/runtime/sessions/{id}/events` | Paginated event log |
+| `POST` | `/v1/runtime/sessions/{id}/user-turn` | Submit user message |
+| `POST` | `/v1/runtime/sessions/{id}/approve` | Approve pending action |
+| `POST` | `/v1/runtime/sessions/{id}/reject` | Reject pending action |
+| `POST` | `/v1/runtime/sessions/{id}/permission/grant` | Grant permission |
+| `POST` | `/v1/runtime/sessions/{id}/permission/deny` | Deny permission |
+| `POST` | `/v1/runtime/sessions/{id}/tool-execution/{started,succeeded,failed}` | Tool lifecycle |
+| `POST` | `/v1/runtime/sessions/{id}/subtask/{started,completed,failed}` | Subtask lifecycle |
+| `POST` | `/v1/runtime/sessions/{id}/abort` | Abort session |
+| `POST` | `/v1/runtime/sessions/{id}/pause` | Pause session |
 
-- extension fields top-level che il proxy accetta in ingresso
+## Architecture
 
-`models.<name>.thinking_passthrough_mode`
+The codebase follows **Ports and Adapters** (hexagonal architecture):
 
-- politica di egress del thinking per quel modello
+```
+claude_proxy/
+├── api/             HTTP layer — FastAPI routes, request/response schemas
+├── application/     Orchestration — request flow, compatibility, SSE encoding
+├── domain/          Canonical models, enums, errors, abstract ports
+├── infrastructure/  Config, HTTP client, provider adapters
+├── capabilities/    Tool classification and capability registry
+└── runtime/         Session state machine, event log, persistence
+```
 
-`models.<name>.unsupported_request_fields`
+### Request Flow
 
-- campi di request da rimuovere prima della chiamata upstream per quel modello
+```
+1. FastAPI validates the Anthropic request → ChatRequest
+2. Service resolves the target model
+3. RequestPreparer strips unsupported fields per model config
+4. Service runs model-dependent validations
+5. Provider adapter translates to upstream format and sends the request
+6. Response is normalized back to canonical domain events
+7. Application layer encodes Anthropic-compatible JSON or SSE output
+```
 
-## Endpoint
+Each provider implements the `ModelProvider` protocol (`stream`, `complete`, `count_tokens`) with a dedicated translator and stream normalizer. The SSE sequencer guarantees at most one content block open at any time.
 
-### `GET /health`
+## Running
 
-Health check minimale.
-
-Esempio:
+### Standard
 
 ```bash
-curl http://127.0.0.1:8082/health
+python -m claude_proxy
+# or
+claude-proxy
 ```
 
-### `POST /v1/messages`
+Reads `host`, `port`, and `log_level` from the YAML config.
 
-Endpoint Anthropic-compatible principale.
-
-Supporta:
-
-- `stream=false`
-- `stream=true`
-- contenuti strutturati
-- tool definitions e tool_choice
-- metadata
-- system
-- stop sequences
-- thinking config
-
-## Logging e debug
-
-Il progetto usa logging JSON.
-
-Con `server.debug: true` ottieni piu visibilita su:
-
-- validazione request
-- start di stream/complete
-- anteprima request/response HTTP
-
-Quando un campo viene rimosso dal `request_preparer`, viene emesso un log debug strutturato con:
-
-- modello target
-- lista dei campi rimossi
-
-## Test
-
-Per eseguire la suite:
+### With Uvicorn Options
 
 ```bash
-pytest -q
+uvicorn claude_proxy.main:app --host 127.0.0.1 --port 8082 --reload
+uvicorn claude_proxy.main:app --host 0.0.0.0 --port 8082 --workers 4
 ```
 
-La suite copre:
-
-- parsing request schema
-- request preparation model-aware
-- normalizzazione thinking
-- sequenziamento SSE
-- adapter OpenRouter
-- endpoint stream e non-stream
-- golden test SSE
-
-## Sviluppo
-
-Installazione ambiente di sviluppo:
+## Development
 
 ```bash
 python3.14 -m venv .venv
@@ -388,15 +272,33 @@ source .venv/bin/activate
 pip install -e '.[dev]'
 ```
 
-Avvio in sviluppo con reload:
+### Tests
 
 ```bash
-uvicorn claude_proxy.main:app --reload --host 127.0.0.1 --port 8082
+pytest -q
 ```
 
-## Note
+312 tests covering:
 
-- il proxy usa un solo `httpx.AsyncClient` condiviso per processo
-- il parsing SSE e incrementale e non bufferizza l'intera risposta
-- il provider parser resta il piu vicino possibile alla realta upstream
-- le trasformazioni model-aware della request stanno nel layer applicativo, non nel provider adapter
+- API schema validation
+- Request preparation and model-aware field stripping
+- SSE parsing and sequencing
+- Stream normalization for all providers (OpenRouter, Anthropic, OpenAI-compatible)
+- Thinking passthrough policies
+- Provider integration (stream, complete, count_tokens, auth, error mapping)
+- Golden SSE fixtures
+- Runtime orchestration and state machine transitions
+- End-to-end flows
+
+### Linting
+
+```bash
+ruff check claude_proxy/
+mypy claude_proxy/ --ignore-missing-imports
+```
+
+## Known Limitations
+
+- **`count_tokens` on non-Anthropic providers**: OpenRouter, NVIDIA NIM, and Gemini lack a native token counting endpoint. The proxy uses a minimal completion probe (`max_tokens=1`) to extract `prompt_tokens`. This incurs a round-trip and may result in minimal billing.
+- **Extended thinking with probe-based counting**: When the client request includes thinking config, the probe-based token count is a best-effort estimate and may diverge from Anthropic's native `count_tokens`.
+- **Single process**: The proxy uses a single shared `httpx.AsyncClient` per process. For horizontal scaling, run multiple instances behind a load balancer.
