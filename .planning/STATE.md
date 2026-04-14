@@ -4,10 +4,10 @@
 Milestone 1: Multi-Protocol LLM Proxy
 
 ## Current Phase
-(none — all phases complete)
+Phase 9: Resilience, Discoverability & Operations
 
 ## Status
-`complete` — Phase 8 executed, all plans done
+`planned` — 5 plans created across 2 waves, ready for execution
 
 ## Completed Phases
 - Phase 1: Direct Anthropic Provider Adapter ✅
@@ -27,11 +27,14 @@ Milestone 1: Multi-Protocol LLM Proxy
 - D-05: Thinking tags configurable per model (not hardcoded)
 - D-06: Reasoning extraction fields configurable per model
 - D-07: Custom headers and finish reason mapping configurable per provider
+- D-08: All 8 operational features in Phase 9 (retry, fallback, models, aliases, logging, health, CORS, rate-limit)
 
 ## Last Session
-- Phase 8 executed: 2 plans, 2 waves, all complete
-- 407 tests passing (22 new in Phase 8)
-- All hardcoded thinking extraction + provider behavior now configurable via YAML
+- Phase 9 planned: 5 plans, 2 waves
+  - Wave 1 (parallel): 09-01 (config), 09-03 (models), 09-04 (logging+health), 09-05 (CORS+rate-limit)
+  - Wave 2: 09-02 (retry+fallback, depends on 09-01)
+- 407 tests passing (from Phase 8)
+- Next: /gsd-execute-phase 09
 
 ## Last Updated
 2026-04-14

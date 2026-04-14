@@ -105,3 +105,23 @@ Depends on: Phase 7
 Plans:
 - [x] 08-01-PLAN.md — Config schema + domain model extension
 - [x] 08-02-PLAN.md — Wire configurable extraction + provider extensibility
+
+### Phase 9: Resilience, Discoverability & Operations
+**Goal:** Production resilience with retry+fallback, model discoverability, operational logging, CORS, and rate-limit propagation.
+- Retry with configurable exponential backoff on transient provider errors (429, 502, 503, 529)
+- Automatic fallback to `fallback_model` when primary exhausts retries
+- Model name aliasing (multiple names resolve to same model)
+- `GET /v1/models` endpoint (OpenAI-compatible model listing)
+- Structured request/response logging middleware (method, path, status, latency)
+- Enhanced health endpoint with per-provider connectivity probing
+- Configurable CORS support (disabled by default)
+- Rate-limit header propagation (Retry-After forwarded to clients)
+Depends on: Phase 8
+**Requirements:** [R-02, R-03, R-04, R-05, R-06, R-07]
+**Plans:** 5 plans
+Plans:
+- [ ] 09-01-PLAN.md — Config schema extension (retry config + model aliases)
+- [ ] 09-02-PLAN.md — Retry with exponential backoff + automatic fallback
+- [ ] 09-03-PLAN.md — GET /v1/models endpoint
+- [ ] 09-04-PLAN.md — Usage logging + enhanced health check
+- [ ] 09-05-PLAN.md — CORS + rate-limit header propagation
