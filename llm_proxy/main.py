@@ -75,6 +75,8 @@ def create_app(
         compatibility_mode=resolved_settings.bridge.compatibility_mode,
         runtime_orchestrator=runtime_orchestrator,
         outbound_repair_policies=repair_policies,
+        fallback_model=resolved_settings.routing.fallback_model,
+        provider_settings=resolved_settings.providers,
         debug=resolved_settings.server.debug,
     )
     openai_message_service = MessageService(
@@ -88,6 +90,8 @@ def create_app(
         compatibility_mode=resolved_settings.bridge.compatibility_mode,
         runtime_orchestrator=runtime_orchestrator,
         outbound_repair_policies=repair_policies,
+        fallback_model=resolved_settings.routing.fallback_model,
+        provider_settings=resolved_settings.providers,
         debug=resolved_settings.server.debug,
     )
 

@@ -6,7 +6,7 @@ from dataclasses import replace
 
 from llm_proxy.application.runtime_contract import RuntimeContractEnforcer
 from llm_proxy.domain.enums import CompatibilityMode
-from llm_proxy.domain.errors import RoutingError, RuntimeContractError
+from llm_proxy.domain.errors import ProviderHttpError, RoutingError, RuntimeContractError, UpstreamTimeoutError
 from llm_proxy.domain.models import (
     ChatRequest,
     ContentBlockStartEvent,
@@ -23,6 +23,7 @@ from llm_proxy.runtime.errors import RuntimeOrchestrationError
 from llm_proxy.runtime.policies import RuntimeOrchestrationPolicies
 from llm_proxy.runtime.orchestrator import RuntimeOrchestrator, effective_runtime_session_id
 from llm_proxy.runtime.stream import runtime_orchestrate_stream
+from llm_proxy.infrastructure.retry import with_retry
 from llm_proxy.domain.ports import (
     ModelProvider,
     ModelResolver,
@@ -50,6 +51,8 @@ class MessageService:
         contract_enforcer: RuntimeContractEnforcer | None = None,
         runtime_orchestrator: RuntimeOrchestrator | None = None,
         outbound_repair_policies: RuntimeOrchestrationPolicies | None = None,
+        fallback_model: str | None = None,
+        provider_settings: Mapping[str, object] | None = None,
         debug: bool = False,
     ) -> None:
         self._resolver = resolver
@@ -64,8 +67,27 @@ class MessageService:
         self._runtime_orchestrator = runtime_orchestrator
         self._repair_policies = outbound_repair_policies or RuntimeOrchestrationPolicies()
         self._debug = debug
+        self._fallback_model = fallback_model
+        self._provider_settings = provider_settings or {}
 
     async def stream(
+        self,
+        request: ChatRequest,
+        provider_context: ProviderRequestContext | None = None,
+    ) -> AsyncIterator[bytes]:
+        try:
+            return await self._stream_impl(request, provider_context)
+        except (ProviderHttpError, UpstreamTimeoutError) as exc:
+            if self._fallback_model and request.model != self._fallback_model:
+                _logger.warning(
+                    "primary model=%s failed, trying fallback=%s: %s",
+                    request.model, self._fallback_model, exc.message,
+                )
+                fallback_request = replace(request, model=self._fallback_model)
+                return await self._stream_impl(fallback_request, provider_context)
+            raise
+
+    async def _stream_impl(
         self,
         request: ChatRequest,
         provider_context: ProviderRequestContext | None = None,
@@ -81,7 +103,15 @@ class MessageService:
                 self._compatibility_mode.value,
                 len(prepared_request.messages),
             )
-        events = await provider.stream(prepared_request, model, provider_context)
+        provider_cfg = self._provider_settings.get(model.provider)
+        if provider_cfg is not None:
+            events = await with_retry(
+                lambda: provider.stream(prepared_request, model, provider_context),
+                provider_cfg,
+                operation=f"{model.provider}/stream",
+            )
+        else:
+            events = await provider.stream(prepared_request, model, provider_context)
         normalized = self._normalizer.normalize_stream(
             prepared_request,
             model,
@@ -117,6 +147,23 @@ class MessageService:
         request: ChatRequest,
         provider_context: ProviderRequestContext | None = None,
     ) -> dict[str, object]:
+        try:
+            return await self._complete_impl(request, provider_context)
+        except (ProviderHttpError, UpstreamTimeoutError) as exc:
+            if self._fallback_model and request.model != self._fallback_model:
+                _logger.warning(
+                    "primary model=%s failed, trying fallback=%s: %s",
+                    request.model, self._fallback_model, exc.message,
+                )
+                fallback_request = replace(request, model=self._fallback_model)
+                return await self._complete_impl(fallback_request, provider_context)
+            raise
+
+    async def _complete_impl(
+        self,
+        request: ChatRequest,
+        provider_context: ProviderRequestContext | None = None,
+    ) -> dict[str, object]:
         model, provider = self._resolve(request)
         prepared_request = self._request_preparer.prepare(request, model)
         self._validate_request(prepared_request, model)
@@ -128,7 +175,14 @@ class MessageService:
                 self._compatibility_mode.value,
                 len(prepared_request.messages),
             )
-        response = await provider.complete(prepared_request, model, provider_context)
+        if (provider_cfg := self._provider_settings.get(model.provider)) is not None:
+            response = await with_retry(
+                lambda: provider.complete(prepared_request, model, provider_context),
+                provider_cfg,
+                operation=f"{model.provider}/complete",
+            )
+        else:
+            response = await provider.complete(prepared_request, model, provider_context)
         normalized = self._normalizer.normalize_response(
             prepared_request,
             model,
