@@ -4,10 +4,10 @@
 Milestone 1: Multi-Protocol LLM Proxy
 
 ## Current Phase
-Phase 8: Configurable Thinking Extraction & Provider Extensibility
+(none — all phases complete)
 
 ## Status
-`plan` — plans created, awaiting execution
+`complete` — Phase 8 executed, all plans done
 
 ## Completed Phases
 - Phase 1: Direct Anthropic Provider Adapter ✅
@@ -17,6 +17,7 @@ Phase 8: Configurable Thinking Extraction & Provider Extensibility
 - Phase 5: OpenAI Chat Completions Ingress & Egress ✅
 - Phase 6: Cross-Protocol Integration Tests & Golden Fixtures ✅
 - Phase 7: Production Hardening & Release Preparation ✅
+- Phase 8: Configurable Thinking Extraction & Provider Extensibility ✅
 
 ## Decisions
 - D-01: Project name → llm-proxy
@@ -28,10 +29,9 @@ Phase 8: Configurable Thinking Extraction & Provider Extensibility
 - D-07: Custom headers and finish reason mapping configurable per provider
 
 ## Last Session
-- Phases 1-7 complete, 385 tests passing
-- Thinking tag parser added (streaming + non-streaming)
-- Phase 8 planned: configurable thinking extraction + provider extensibility
-- 2 plans created in Wave 1 → Wave 2 structure
+- Phase 8 executed: 2 plans, 2 waves, all complete
+- 407 tests passing (22 new in Phase 8)
+- All hardcoded thinking extraction + provider behavior now configurable via YAML
 
 ## Last Updated
-2025-07-26
+2026-04-14
