@@ -8,10 +8,12 @@ from llm_proxy.api.errors import install_error_handlers
 from llm_proxy.api.http_debug import install_http_debug_middleware
 from llm_proxy.api.routes.health import router as health_router
 from llm_proxy.api.routes.messages import router as messages_router
+from llm_proxy.api.routes.chat_completions import router as chat_completions_router
 from llm_proxy.api.routes.runtime_control import router as runtime_control_router
 from llm_proxy.application.policies import CompatibilityNormalizer, StreamEventSequencer
 from llm_proxy.application.request_preparer import ModelAwareRequestPreparer
 from llm_proxy.application.services import MessageService
+from llm_proxy.application.openai_egress import OpenAIResponseEncoder, OpenAISseEncoder
 from llm_proxy.application.sse import AnthropicResponseEncoder, AnthropicSseEncoder
 from llm_proxy.infrastructure.config import Settings, load_settings
 from llm_proxy.infrastructure.http import SharedAsyncClientManager
@@ -72,6 +74,19 @@ def create_app(
         outbound_repair_policies=repair_policies,
         debug=resolved_settings.server.debug,
     )
+    openai_message_service = MessageService(
+        resolver=resolver,
+        providers=providers,
+        request_preparer=request_preparer,
+        normalizer=normalizer,
+        sequencer=StreamEventSequencer(),
+        sse_encoder=OpenAISseEncoder(),
+        response_encoder=OpenAIResponseEncoder(),
+        compatibility_mode=resolved_settings.bridge.compatibility_mode,
+        runtime_orchestrator=runtime_orchestrator,
+        outbound_repair_policies=repair_policies,
+        debug=resolved_settings.server.debug,
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -87,10 +102,12 @@ def create_app(
     app.state.settings = resolved_settings
     app.state.client_manager = client_manager
     app.state.message_service = message_service
+    app.state.openai_message_service = openai_message_service
     app.state.runtime_orchestrator = runtime_orchestrator
     app.state.runtime_sqlite = runtime_sqlite
     app.include_router(health_router)
     app.include_router(messages_router)
+    app.include_router(chat_completions_router)
     app.include_router(runtime_control_router)
     install_error_handlers(app)
     install_http_debug_middleware(app)
