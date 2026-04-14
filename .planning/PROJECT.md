@@ -1,17 +1,17 @@
 # PROJECT.md
 
 ## Name
-claude-proxy
+llm-proxy
 
 ## Vision
-Local Python 3.14 proxy that presents an Anthropic Messages API surface while normalizing heterogeneous upstream providers (Anthropic, OpenAI, OpenRouter) into a canonical Anthropic-compatible output. Dual-protocol ingress (Anthropic Messages + OpenAI Chat Completions) so both Claude Code and Codex-compatible clients work through the same proxy.
+Local Python 3.14 reverse proxy that accepts both Anthropic Messages API and OpenAI Chat Completions API requests, routes them to any supported upstream provider (Anthropic, OpenAI, OpenRouter, NVIDIA NIM, Gemini), and returns responses in the client's native protocol format. Dual-protocol ingress enables both Claude Code and Codex CLI (or any OpenAI-compatible client) to work through the same proxy.
 
 ## Principles
-- **Protocol fidelity**: every adapter must produce bit-correct Anthropic-compatible output; no implicit transformations or hacks
+- **Protocol fidelity**: every adapter must produce bit-correct output for its protocol; no implicit transformations or hacks
 - **Explicit typing**: all protocol differences are modeled as typed adapters, not conditionals scattered in the pipeline
 - **Ports and Adapters**: domain layer is provider-agnostic; new providers plug in without touching core
 - **Local-first**: designed for single-user local operation; no auth, no multi-tenancy
-- **Minimal surface**: MVP delivers streaming + non-streaming completions and token counting; no tool-calling server-side, no multimodal, no waterfall protocols
+- **Bidirectional translation**: internal canonical model is Anthropic-based; ingress and egress encoders handle protocol-specific wire formats independently
 
 ## Python Quality Standards
 
@@ -44,4 +44,4 @@ Local Python 3.14 proxy that presents an Anthropic Messages API surface while no
 - YAML config with env overrides
 
 ## Current State
-Working single-provider proxy (OpenRouter only) with Anthropic-compatible ingress/egress. Runtime orchestration subsystem (optional). Full test suite (~5200 LOC, unit + integration + golden).
+Multi-provider proxy with Anthropic-compatible ingress/egress. Five upstream adapters: OpenRouter, Anthropic direct, NVIDIA NIM, Gemini (via OpenAI-compatible framework). Runtime orchestration subsystem (optional). Full test suite (~312 tests, unit + integration + golden). Pending: project rename to llm-proxy, OpenAI direct provider registration, OpenAI Chat Completions ingress/egress, production hardening.
