@@ -29,7 +29,8 @@ Depends on: —
 **Requirements:** [R-02, R-04]
 **Plans:** — (executed inline)
 
-### Phase 3: Project Rename
+### Phase 3: Project Rename ✅
+**Status:** Complete
 **Goal:** Rename claude-proxy → llm-proxy across the entire codebase.
 - Package directory: `claude_proxy/` → `llm_proxy/`
 - `pyproject.toml`: name, packages, entry point, description
@@ -43,9 +44,10 @@ Depends on: Phase 2
 **Requirements:** [R-07]
 **Plans:** 1 plan
 Plans:
-- [ ] 03-01-PLAN.md — Full Project Rename (claude-proxy → llm-proxy)
+- [x] 03-01-PLAN.md — Full Project Rename (claude-proxy → llm-proxy)
 
-### Phase 4: OpenAI Direct Provider
+### Phase 4: OpenAI Direct Provider ✅
+**Status:** Complete
 **Goal:** Register OpenAI as a first-class provider using the existing OpenAI-compatible adapter framework.
 - Add `"openai"` builder in `build_provider_registry()` using `OpenAICompatProvider`
 - Config block: `base_url: https://api.openai.com/v1`, `api_key_env: OPENAI_API_KEY`
@@ -54,7 +56,8 @@ Plans:
 Depends on: Phase 3
 **Requirements:** [R-02, R-04]
 
-### Phase 5: OpenAI Chat Completions Ingress & Egress
+### Phase 5: OpenAI Chat Completions Ingress & Egress ✅
+**Status:** Complete
 **Goal:** Accept OpenAI-format requests and return OpenAI-format responses, enabling Codex CLI and any OpenAI-compatible client.
 - New route: `POST /v1/chat/completions` (streaming + non-streaming)
 - Pydantic request schema for OpenAI Chat Completions format
@@ -65,7 +68,8 @@ Depends on: Phase 3
 Depends on: Phase 3
 **Requirements:** [R-01, R-03, R-05, R-06]
 
-### Phase 6: Cross-Protocol Integration Tests & Golden Fixtures
+### Phase 6: Cross-Protocol Integration Tests & Golden Fixtures ✅
+**Status:** Complete
 **Goal:** Full coverage of multi-provider, multi-ingress flows.
 - Golden tests: each provider SSE → canonical → each egress format
 - Integration tests: Anthropic ingress → OpenAI provider → Anthropic response
@@ -75,7 +79,8 @@ Depends on: Phase 3
 Depends on: Phase 4, Phase 5
 **Requirements:** [R-05, R-06, R-07]
 
-### Phase 7: Production Hardening & Release Preparation
+### Phase 7: Production Hardening & Release Preparation ✅
+**Status:** Complete
 **Goal:** Production-ready quality across the entire proxy.
 - Error model audit: verify HTTP status mapping for all error paths across all providers and ingress protocols
 - Config validation: all model→provider references resolve at startup, schema-level checks
@@ -85,3 +90,18 @@ Depends on: Phase 4, Phase 5
 - Documentation: complete README, config reference, architecture guide, changelog
 Depends on: Phase 6
 **Requirements:** [R-07]
+
+### Phase 8: Configurable Thinking Extraction & Provider Extensibility
+**Goal:** Replace all hardcoded model-specific and provider-specific behavior with YAML-configurable parameters, so adding new models/providers requires zero code changes.
+- Per-model thinking tag patterns (`thinking_open_tag`, `thinking_close_tag`) — configurable instead of hardcoded `<think>`/`</think>`
+- Per-model thinking extraction fields (`thinking_extraction_fields`) — configurable instead of hardcoded `reasoning_content`/`reasoning`
+- Per-provider custom HTTP headers (`custom_headers`) — arbitrary headers merged into upstream requests
+- Per-provider finish reason mapping (`finish_reason_map`) — override default OpenAI→Anthropic mapping
+- Tag pair validation at startup (open/close must both be set or both null)
+- Full backward compatibility — all defaults match current hardcoded values
+Depends on: Phase 7
+**Requirements:** [R-04, R-05, R-07]
+**Plans:** 2 plans
+Plans:
+- [ ] 08-01-PLAN.md — Config schema + domain model extension
+- [ ] 08-02-PLAN.md — Wire configurable extraction + provider extensibility
