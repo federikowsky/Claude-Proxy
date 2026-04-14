@@ -33,6 +33,8 @@ from llm_proxy.domain.models import (
     ProviderRequestContext,
     TextBlock,
     TextDelta,
+    ThinkingBlock,
+    ThinkingDelta,
     ToolChoice,
     ToolDefinition,
     ToolResultBlock,
@@ -160,6 +162,61 @@ class OpenAICompatTranslator:
         return "auto"
 
 
+class _ThinkingTagParser:
+    """Stateful parser that splits streamed text at configurable tag boundaries."""
+
+    def __init__(self, open_tag: str = "<think>", close_tag: str = "</think>") -> None:
+        self._open = open_tag
+        self._close = close_tag
+        self._in_thinking = False
+        self._buf = ""
+
+    @property
+    def in_thinking(self) -> bool:
+        return self._in_thinking
+
+    def feed(self, text: str) -> list[tuple[str, str]]:
+        """Return (segment_type, text) pairs; segment_type is 'text' or 'thinking'."""
+        self._buf += text
+        segments: list[tuple[str, str]] = []
+        while self._buf:
+            tag = self._close if self._in_thinking else self._open
+            pos = self._buf.find(tag)
+            if pos == -1:
+                partial = self._partial_tag_len(tag)
+                if partial:
+                    emit = self._buf[:-partial]
+                    if emit:
+                        segments.append(("thinking" if self._in_thinking else "text", emit))
+                    self._buf = self._buf[-partial:]
+                    return segments
+                kind = "thinking" if self._in_thinking else "text"
+                segments.append((kind, self._buf))
+                self._buf = ""
+            else:
+                before = self._buf[:pos]
+                if before:
+                    segments.append(("thinking" if self._in_thinking else "text", before))
+                self._buf = self._buf[pos + len(tag) :]
+                self._in_thinking = not self._in_thinking
+        return segments
+
+    def _partial_tag_len(self, tag: str) -> int:
+        for i in range(min(len(tag) - 1, len(self._buf)), 0, -1):
+            if self._buf[-i:] == tag[:i]:
+                return i
+        return 0
+
+    def flush(self) -> list[tuple[str, str]]:
+        """Drain remaining buffer (e.g. at end-of-stream)."""
+        if self._buf:
+            kind = "thinking" if self._in_thinking else "text"
+            result = [(kind, self._buf)]
+            self._buf = ""
+            return result
+        return []
+
+
 class OpenAICompatStreamNormalizer:
     """Translates OpenAI Chat Completions SSE chunks → Anthropic canonical events.
 
@@ -168,13 +225,29 @@ class OpenAICompatStreamNormalizer:
     the flat OpenAI chunk stream.
     """
 
-    def __init__(self, provider_name: str = "openai_compat") -> None:
+    def __init__(
+        self,
+        provider_name: str = "openai_compat",
+        *,
+        thinking_open_tag: str | None = "<think>",
+        thinking_close_tag: str | None = "</think>",
+        thinking_extraction_fields: tuple[str, ...] = ("reasoning_content", "reasoning"),
+        finish_reason_map: dict[str, str] | None = None,
+    ) -> None:
         self._provider_name = provider_name
         self._message_started: bool = False
         self._stream_finished: bool = False
         self._current_block_index: int = -1
         self._block_open: bool = False
+        self._current_block_type: str | None = None  # "text" or "thinking"
         self._tool_call_blocks: dict[int, _ToolCallAccumulator] = {}
+        self._tag_parser = (
+            _ThinkingTagParser(thinking_open_tag, thinking_close_tag)
+            if thinking_open_tag is not None
+            else None
+        )
+        self._thinking_extraction_fields = thinking_extraction_fields
+        self._finish_reason_map = finish_reason_map
         self._msg_id: str = ""
         self._model: str = ""
 
@@ -217,20 +290,28 @@ class OpenAICompatStreamNormalizer:
             events.append(self._emit_message_start(payload))
             self._message_started = True
 
-        # Text content
+        # Reasoning content (configurable extraction fields)
+        reasoning = None
+        for field in self._thinking_extraction_fields:
+            val = delta.get(field)
+            if isinstance(val, str) and val:
+                reasoning = val
+                break
+        if reasoning:
+            events.extend(self._emit_thinking_content(reasoning))
+
+        # Text content — parse thinking tags into structured blocks (if tag parser configured)
         content = delta.get("content")
         if isinstance(content, str) and content:
-            if not self._block_open:
-                self._current_block_index += 1
-                events.append(ContentBlockStartEvent(
-                    index=self._current_block_index,
-                    block=TextBlock(text=""),
-                ))
-                self._block_open = True
-            events.append(ContentBlockDeltaEvent(
-                index=self._current_block_index,
-                delta=TextDelta(text=content),
-            ))
+            if self._tag_parser is not None:
+                segments = self._tag_parser.feed(content)
+                for seg_type, seg_text in segments:
+                    if seg_type == "thinking":
+                        events.extend(self._emit_thinking_content(seg_text))
+                    else:
+                        events.extend(self._emit_text_content(seg_text))
+            else:
+                events.extend(self._emit_text_content(content))
 
         # Tool calls
         tool_calls = delta.get("tool_calls")
@@ -259,15 +340,66 @@ class OpenAICompatStreamNormalizer:
             ),
         )
 
+    def _emit_thinking_content(self, text: str) -> list[CanonicalEvent]:
+        events: list[CanonicalEvent] = []
+        if self._current_block_type != "thinking":
+            if self._block_open:
+                events.append(ContentBlockStopEvent(index=self._current_block_index))
+                self._block_open = False
+            self._current_block_index += 1
+            events.append(ContentBlockStartEvent(
+                index=self._current_block_index,
+                block=ThinkingBlock(thinking=""),
+            ))
+            self._block_open = True
+            self._current_block_type = "thinking"
+        events.append(ContentBlockDeltaEvent(
+            index=self._current_block_index,
+            delta=ThinkingDelta(thinking=text),
+        ))
+        return events
+
+    def _emit_text_content(self, text: str) -> list[CanonicalEvent]:
+        events: list[CanonicalEvent] = []
+        if self._current_block_type != "text":
+            if self._block_open:
+                events.append(ContentBlockStopEvent(index=self._current_block_index))
+                self._block_open = False
+            self._current_block_index += 1
+            events.append(ContentBlockStartEvent(
+                index=self._current_block_index,
+                block=TextBlock(text=""),
+            ))
+            self._block_open = True
+            self._current_block_type = "text"
+        events.append(ContentBlockDeltaEvent(
+            index=self._current_block_index,
+            delta=TextDelta(text=text),
+        ))
+        return events
+
+    def _flush_tag_parser(self) -> list[CanonicalEvent]:
+        if self._tag_parser is None:
+            return []
+        events: list[CanonicalEvent] = []
+        for seg_type, seg_text in self._tag_parser.flush():
+            if seg_type == "thinking":
+                events.extend(self._emit_thinking_content(seg_text))
+            else:
+                events.extend(self._emit_text_content(seg_text))
+        return events
+
     def _handle_tool_call_delta(self, tc: dict[str, Any]) -> list[CanonicalEvent]:
         events: list[CanonicalEvent] = []
         tc_index = tc.get("index", 0)
 
         if tc_index not in self._tool_call_blocks:
-            # Close any open text block first
+            # Flush tag parser and close any open content block first
+            events.extend(self._flush_tag_parser())
             if self._block_open:
                 events.append(ContentBlockStopEvent(index=self._current_block_index))
                 self._block_open = False
+                self._current_block_type = None
 
             self._current_block_index += 1
             tc_id = tc.get("id", f"call_{tc_index}")
@@ -297,12 +429,15 @@ class OpenAICompatStreamNormalizer:
 
     def _emit_finish(self, finish_reason: str, payload: dict[str, Any]) -> list[CanonicalEvent]:
         events: list[CanonicalEvent] = []
-        # Close any open block
+        # Flush tag parser and close any open block
+        events.extend(self._flush_tag_parser())
         if self._block_open:
             events.append(ContentBlockStopEvent(index=self._current_block_index))
             self._block_open = False
+            self._current_block_type = None
 
-        stop_reason = _FINISH_REASON_MAP.get(finish_reason, finish_reason)
+        frm = self._finish_reason_map or _FINISH_REASON_MAP
+        stop_reason = frm.get(finish_reason, finish_reason)
         usage_payload = payload.get("usage")
         events.append(MessageDeltaEvent(
             stop_reason=stop_reason,
@@ -312,9 +447,11 @@ class OpenAICompatStreamNormalizer:
 
     def _finalize(self) -> list[CanonicalEvent]:
         events: list[CanonicalEvent] = []
+        events.extend(self._flush_tag_parser())
         if self._block_open:
             events.append(ContentBlockStopEvent(index=self._current_block_index))
             self._block_open = False
+            self._current_block_type = None
         if not self._stream_finished:
             self._stream_finished = True
             events.append(MessageStopEvent())
@@ -355,7 +492,13 @@ class OpenAICompatProvider:
             timeout=self._timeout(),
         )
         response = await self._open_stream(stream_context)
-        normalizer = OpenAICompatStreamNormalizer(self._provider_name)
+        normalizer = OpenAICompatStreamNormalizer(
+            self._provider_name,
+            thinking_open_tag=model.thinking_open_tag,
+            thinking_close_tag=model.thinking_close_tag,
+            thinking_extraction_fields=model.thinking_extraction_fields,
+            finish_reason_map=self._settings.finish_reason_map,
+        )
 
         async def iterator() -> AsyncIterator[CanonicalEvent]:
             try:
@@ -398,7 +541,13 @@ class OpenAICompatProvider:
             raise ProviderProtocolError("invalid upstream JSON response") from exc
         if not isinstance(data, dict):
             raise ProviderProtocolError("invalid upstream response payload")
-        return _response_from_openai(data)
+        return _response_from_openai(
+            data,
+            thinking_open_tag=model.thinking_open_tag,
+            thinking_close_tag=model.thinking_close_tag,
+            thinking_extraction_fields=model.thinking_extraction_fields,
+            finish_reason_map=self._settings.finish_reason_map,
+        )
 
     async def count_tokens(
         self,
@@ -464,13 +613,16 @@ class OpenAICompatProvider:
         accept: str,
         provider_context: ProviderRequestContext | None = None,
     ) -> dict[str, str]:
-        headers = {
-            "Authorization": f"Bearer {self._settings.api_key.get_secret_value()}",
-            "Accept": accept,
-            "Content-Type": "application/json",
-        }
+        headers: dict[str, str] = {}
+        # Custom headers first (lowest priority)
+        headers.update(self._settings.custom_headers)
+        # Standard headers override custom
+        headers["Authorization"] = f"Bearer {self._settings.api_key.get_secret_value()}"
+        headers["Accept"] = accept
+        headers["Content-Type"] = "application/json"
         if self._settings.debug_echo_upstream_body:
             headers["X-Debug"] = "1"
+        # Per-request context headers (highest priority)
         if provider_context is not None:
             headers.update(provider_context.headers)
         return headers
@@ -530,7 +682,47 @@ def _usage_from_openai(usage: dict[str, Any]) -> Usage:
     )
 
 
-def _response_from_openai(data: dict[str, Any]) -> ChatResponse:
+def _parse_thinking_tags(
+    text: str,
+    open_tag: str = "<think>",
+    close_tag: str = "</think>",
+) -> list[ContentBlock]:
+    """Split text at thinking tag boundaries into ThinkingBlock / TextBlock."""
+    blocks: list[ContentBlock] = []
+    pos = 0
+    open_len = len(open_tag)
+    close_len = len(close_tag)
+    while pos < len(text):
+        open_pos = text.find(open_tag, pos)
+        if open_pos == -1:
+            remainder = text[pos:]
+            if remainder:
+                blocks.append(TextBlock(text=remainder))
+            break
+        before = text[pos:open_pos]
+        if before:
+            blocks.append(TextBlock(text=before))
+        close_pos = text.find(close_tag, open_pos + open_len)
+        if close_pos == -1:
+            thinking_text = text[open_pos + open_len :]
+            if thinking_text:
+                blocks.append(ThinkingBlock(thinking=thinking_text))
+            break
+        thinking_text = text[open_pos + open_len : close_pos]
+        if thinking_text:
+            blocks.append(ThinkingBlock(thinking=thinking_text))
+        pos = close_pos + close_len
+    return blocks
+
+
+def _response_from_openai(
+    data: dict[str, Any],
+    *,
+    thinking_open_tag: str | None = "<think>",
+    thinking_close_tag: str | None = "</think>",
+    thinking_extraction_fields: tuple[str, ...] = ("reasoning_content", "reasoning"),
+    finish_reason_map: dict[str, str] | None = None,
+) -> ChatResponse:
     """Convert an OpenAI Chat Completions JSON response to a canonical ChatResponse."""
     choices = data.get("choices", [])
     if not isinstance(choices, list) or not choices:
@@ -540,9 +732,21 @@ def _response_from_openai(data: dict[str, Any]) -> ChatResponse:
     finish_reason = choice.get("finish_reason", "stop")
 
     content_blocks: list[ContentBlock] = []
+
+    # Reasoning content (configurable extraction fields)
+    for field in thinking_extraction_fields:
+        val = message.get(field)
+        if isinstance(val, str) and val:
+            content_blocks.append(ThinkingBlock(thinking=val))
+            break
+
+    # Text content — parse thinking tags into structured blocks (if configured)
     text = message.get("content")
     if isinstance(text, str) and text:
-        content_blocks.append(TextBlock(text=text))
+        if thinking_open_tag is not None:
+            content_blocks.extend(_parse_thinking_tags(text, thinking_open_tag, thinking_close_tag or ""))
+        else:
+            content_blocks.append(TextBlock(text=text))
 
     tool_calls = message.get("tool_calls")
     if isinstance(tool_calls, list):
@@ -565,7 +769,7 @@ def _response_from_openai(data: dict[str, Any]) -> ChatResponse:
         role=Role.ASSISTANT,
         model=_string(data.get("model")),
         content=tuple(content_blocks),
-        stop_reason=_FINISH_REASON_MAP.get(finish_reason, finish_reason),
+        stop_reason=(finish_reason_map or _FINISH_REASON_MAP).get(finish_reason, finish_reason),
         stop_sequence=None,
         usage=_usage_from_openai(usage_payload) if isinstance(usage_payload, dict) else Usage(),
     )
