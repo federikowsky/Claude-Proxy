@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from llm_proxy.api.errors import install_error_handlers
 from llm_proxy.api.http_debug import install_http_debug_middleware
+from llm_proxy.api.middleware import RequestLoggingMiddleware
 from llm_proxy.api.routes.health import router as health_router
 from llm_proxy.api.routes.models import router as models_router
 from llm_proxy.api.routes.messages import router as messages_router
@@ -113,6 +114,7 @@ def create_app(
     app.include_router(runtime_control_router)
     install_error_handlers(app)
     install_http_debug_middleware(app)
+    app.add_middleware(RequestLoggingMiddleware)
     return app
 
 
