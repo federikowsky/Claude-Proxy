@@ -81,6 +81,17 @@ providers:
     max_connections: 100
     max_keepalive_connections: 20
 
+  openai:
+    enabled: false
+    base_url: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+    connect_timeout_seconds: 10
+    read_timeout_seconds: 300
+    write_timeout_seconds: 30
+    pool_timeout_seconds: 10
+    max_connections: 100
+    max_keepalive_connections: 20
+
 models:
   nvidia/nemotron-3-super-120b-a12b:free:
     provider: openrouter

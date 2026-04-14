@@ -38,6 +38,12 @@ def build_provider_registry(
             translator=OpenAICompatTranslator("gemini"),
             provider_name="gemini",
         ),
+        "openai": lambda provider_settings: OpenAICompatProvider(
+            settings=provider_settings,
+            client_manager=client_manager,
+            translator=OpenAICompatTranslator("openai"),
+            provider_name="openai",
+        ),
     }
     providers: dict[str, ModelProvider] = {}
     for provider_name, provider_settings in settings.providers.items():
