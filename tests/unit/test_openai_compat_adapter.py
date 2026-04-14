@@ -21,6 +21,8 @@ from llm_proxy.domain.models import (
     ModelInfo,
     TextBlock,
     TextDelta,
+    ThinkingBlock,
+    ThinkingDelta,
     ToolChoice,
     ToolDefinition,
     ToolResultBlock,
@@ -29,6 +31,8 @@ from llm_proxy.domain.models import (
 from llm_proxy.infrastructure.providers.openai_compat import (
     OpenAICompatStreamNormalizer,
     OpenAICompatTranslator,
+    _ThinkingTagParser,
+    _parse_thinking_tags,
 )
 from llm_proxy.infrastructure.providers.sse import IncrementalSseParser, SseMessage
 from tests.conftest import chunk_bytes, collect_list
@@ -516,3 +520,488 @@ async def test_stream_normalizer_text_then_tool_blocks() -> None:
     assert tool_starts[0] is not None
     tool_event = events[tool_starts[0]]
     assert tool_event.index == 1
+
+
+# ---------------------------------------------------------------------------
+# ThinkingTagParser unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestThinkingTagParser:
+    def test_plain_text_no_tags(self) -> None:
+        parser = _ThinkingTagParser()
+        assert parser.feed("hello world") == [("text", "hello world")]
+
+    def test_full_think_block(self) -> None:
+        parser = _ThinkingTagParser()
+        segments = parser.feed("<think>reasoning here</think>answer")
+        assert segments == [
+            ("thinking", "reasoning here"),
+            ("text", "answer"),
+        ]
+
+    def test_think_block_split_across_chunks(self) -> None:
+        parser = _ThinkingTagParser()
+        s1 = parser.feed("<thi")
+        # Partial open tag buffered — nothing emitted
+        assert s1 == []
+        s2 = parser.feed("nk>deep thought</think>result")
+        assert ("thinking", "deep thought") in s2
+        assert ("text", "result") in s2
+
+    def test_unclosed_think_tag(self) -> None:
+        parser = _ThinkingTagParser()
+        segments = parser.feed("<think>still thinking")
+        assert segments == [("thinking", "still thinking")]
+        assert parser.in_thinking is True
+        flushed = parser.flush()
+        assert flushed == []
+
+    def test_multiple_think_blocks(self) -> None:
+        parser = _ThinkingTagParser()
+        segments = parser.feed("<think>a</think>text<think>b</think>end")
+        assert segments == [
+            ("thinking", "a"),
+            ("text", "text"),
+            ("thinking", "b"),
+            ("text", "end"),
+        ]
+
+    def test_flush_emits_buffered_partial_tag(self) -> None:
+        parser = _ThinkingTagParser()
+        # Feed text where close tag is partially buffered
+        segments = parser.feed("<think>thought</thi")
+        assert ("thinking", "thought") in segments
+        # The partial "</thi" is buffered — flush drains it
+        flushed = parser.flush()
+        assert flushed == [("thinking", "</thi")]
+
+    def test_partial_close_tag_buffered(self) -> None:
+        parser = _ThinkingTagParser()
+        parser.feed("<think>thought</thi")
+        assert parser.in_thinking is True
+        s = parser.feed("nk>done")
+        assert ("text", "done") in s
+
+
+# ---------------------------------------------------------------------------
+# _parse_thinking_tags (non-streaming) tests
+# ---------------------------------------------------------------------------
+
+
+class TestParseThinkingTags:
+    def test_no_tags(self) -> None:
+        blocks = _parse_thinking_tags("just text")
+        assert len(blocks) == 1
+        assert isinstance(blocks[0], TextBlock)
+        assert blocks[0].text == "just text"
+
+    def test_think_then_text(self) -> None:
+        blocks = _parse_thinking_tags("<think>reason</think>answer")
+        assert len(blocks) == 2
+        assert isinstance(blocks[0], ThinkingBlock)
+        assert blocks[0].thinking == "reason"
+        assert isinstance(blocks[1], TextBlock)
+        assert blocks[1].text == "answer"
+
+    def test_unclosed_think_tag(self) -> None:
+        blocks = _parse_thinking_tags("<think>forever thinking")
+        assert len(blocks) == 1
+        assert isinstance(blocks[0], ThinkingBlock)
+        assert blocks[0].thinking == "forever thinking"
+
+
+# ---------------------------------------------------------------------------
+# Stream normalizer: thinking via <think> tags
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_stream_normalizer_think_tags_in_text() -> None:
+    """<think> tags in text content are converted to ThinkingBlock/ThinkingDelta."""
+    upstream = (
+        b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}\n\n'
+        b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"content":"<think>let me think</think>"},"finish_reason":null}]}\n\n'
+        b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"content":"hello!"},"finish_reason":null}]}\n\n'
+        b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n'
+        b"data: [DONE]\n\n"
+    )
+    parser = IncrementalSseParser()
+    normalizer = OpenAICompatStreamNormalizer("nvidia")
+    events = []
+    async for message in parser.parse(_chunks(upstream)):
+        events.extend(normalizer.normalize(message))
+
+    # Find thinking block
+    thinking_starts = [
+        e for e in events if isinstance(e, ContentBlockStartEvent) and isinstance(e.block, ThinkingBlock)
+    ]
+    assert len(thinking_starts) == 1
+
+    thinking_deltas = [
+        e for e in events if isinstance(e, ContentBlockDeltaEvent) and isinstance(e.delta, ThinkingDelta)
+    ]
+    assert any(d.delta.thinking == "let me think" for d in thinking_deltas)
+
+    # Find text block
+    text_starts = [
+        e for e in events if isinstance(e, ContentBlockStartEvent) and isinstance(e.block, TextBlock)
+    ]
+    assert len(text_starts) == 1
+
+    text_deltas = [
+        e for e in events if isinstance(e, ContentBlockDeltaEvent) and isinstance(e.delta, TextDelta)
+    ]
+    assert any(d.delta.text == "hello!" for d in text_deltas)
+
+
+@pytest.mark.asyncio
+async def test_stream_normalizer_reasoning_content_field() -> None:
+    """reasoning_content from delta is emitted as ThinkingBlock/ThinkingDelta."""
+    upstream = (
+        b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n'
+        b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"reasoning_content":"step 1..."},"finish_reason":null}]}\n\n'
+        b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"content":"answer"},"finish_reason":null}]}\n\n'
+        b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n'
+        b"data: [DONE]\n\n"
+    )
+    parser = IncrementalSseParser()
+    normalizer = OpenAICompatStreamNormalizer("nvidia")
+    events = []
+    async for message in parser.parse(_chunks(upstream)):
+        events.extend(normalizer.normalize(message))
+
+    thinking_deltas = [
+        e for e in events if isinstance(e, ContentBlockDeltaEvent) and isinstance(e.delta, ThinkingDelta)
+    ]
+    assert len(thinking_deltas) == 1
+    assert thinking_deltas[0].delta.thinking == "step 1..."
+
+    text_deltas = [
+        e for e in events if isinstance(e, ContentBlockDeltaEvent) and isinstance(e.delta, TextDelta)
+    ]
+    assert len(text_deltas) == 1
+    assert text_deltas[0].delta.text == "answer"
+
+
+@pytest.mark.asyncio
+async def test_stream_normalizer_think_tags_across_chunks() -> None:
+    """<think> tags split across multiple SSE chunks are handled correctly."""
+    upstream = (
+        b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}\n\n'
+        b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"content":"<think>first part"},"finish_reason":null}]}\n\n'
+        b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"content":" second part</think>"},"finish_reason":null}]}\n\n'
+        b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"content":"visible text"},"finish_reason":null}]}\n\n'
+        b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n'
+        b"data: [DONE]\n\n"
+    )
+    parser = IncrementalSseParser()
+    normalizer = OpenAICompatStreamNormalizer("nvidia")
+    events = []
+    async for message in parser.parse(_chunks(upstream)):
+        events.extend(normalizer.normalize(message))
+
+    thinking_deltas = [
+        e for e in events if isinstance(e, ContentBlockDeltaEvent) and isinstance(e.delta, ThinkingDelta)
+    ]
+    combined_thinking = "".join(d.delta.thinking for d in thinking_deltas)
+    assert combined_thinking == "first part second part"
+
+    text_deltas = [
+        e for e in events if isinstance(e, ContentBlockDeltaEvent) and isinstance(e.delta, TextDelta)
+    ]
+    combined_text = "".join(d.delta.text for d in text_deltas)
+    assert combined_text == "visible text"
+
+
+@pytest.mark.asyncio
+async def test_stream_normalizer_thinking_then_tool_call() -> None:
+    """Thinking block is properly closed before tool call starts."""
+    upstream = (
+        b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n'
+        b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"content":"<think>plan</think>"},"finish_reason":null}]}\n\n'
+        b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"bash","arguments":"{\\"cmd\\":\\"ls\\"}"}}]},"finish_reason":null}]}\n\n'
+        b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}\n\n'
+        b"data: [DONE]\n\n"
+    )
+    parser = IncrementalSseParser()
+    normalizer = OpenAICompatStreamNormalizer("nvidia")
+    events = []
+    async for message in parser.parse(_chunks(upstream)):
+        events.extend(normalizer.normalize(message))
+
+    thinking_starts = [
+        e for e in events if isinstance(e, ContentBlockStartEvent) and isinstance(e.block, ThinkingBlock)
+    ]
+    assert len(thinking_starts) == 1
+
+    tool_starts = [
+        e for e in events if isinstance(e, ContentBlockStartEvent) and isinstance(e.block, ToolUseBlock)
+    ]
+    assert len(tool_starts) == 1
+
+    # Thinking block closed before tool block opens
+    thinking_stop_idx = next(
+        i for i, e in enumerate(events)
+        if isinstance(e, ContentBlockStopEvent) and e.index == thinking_starts[0].index
+    )
+    tool_start_idx = next(i for i, e in enumerate(events) if e is tool_starts[0])
+    assert thinking_stop_idx < tool_start_idx
+
+
+# ---------------------------------------------------------------------------
+# Configurable extraction tests (Phase 08-02)
+# ---------------------------------------------------------------------------
+
+
+class TestThinkingTagParserCustomTags:
+    """_ThinkingTagParser with non-default open/close tags."""
+
+    def test_custom_tags_basic(self) -> None:
+        parser = _ThinkingTagParser("<reasoning>", "</reasoning>")
+        segments = parser.feed("hello<reasoning>deep thought</reasoning>world")
+        assert segments == [("text", "hello"), ("thinking", "deep thought"), ("text", "world")]
+
+    def test_custom_tags_flush(self) -> None:
+        parser = _ThinkingTagParser("<r>", "</r>")
+        segments = parser.feed("before<r>thinking")
+        assert ("thinking", "thinking") in segments
+        remaining = parser.flush()
+        assert remaining == []
+
+    def test_default_tags_unchanged(self) -> None:
+        parser = _ThinkingTagParser()
+        segments = parser.feed("hello<think>deep</think>world")
+        assert segments == [("text", "hello"), ("thinking", "deep"), ("text", "world")]
+
+
+class TestParseThinkingTagsCustom:
+    """_parse_thinking_tags with custom tag parameters."""
+
+    def test_custom_tags(self) -> None:
+        blocks = _parse_thinking_tags("before<r>thought</r>after", "<r>", "</r>")
+        assert len(blocks) == 3
+        assert isinstance(blocks[0], TextBlock) and blocks[0].text == "before"
+        assert isinstance(blocks[1], ThinkingBlock) and blocks[1].thinking == "thought"
+        assert isinstance(blocks[2], TextBlock) and blocks[2].text == "after"
+
+    def test_unclosed_custom_tag(self) -> None:
+        blocks = _parse_thinking_tags("start<reason>partial", "<reason>", "</reason>")
+        assert len(blocks) == 2
+        assert isinstance(blocks[0], TextBlock) and blocks[0].text == "start"
+        assert isinstance(blocks[1], ThinkingBlock) and blocks[1].thinking == "partial"
+
+    def test_default_tags_backward_compat(self) -> None:
+        blocks = _parse_thinking_tags("a<think>b</think>c")
+        assert len(blocks) == 3
+
+
+class TestNormalizerNullThinkingTags:
+    """Normalizer with thinking_open_tag=None disables tag parsing."""
+
+    @pytest.mark.asyncio
+    async def test_null_tags_passes_text_through(self) -> None:
+        upstream = (
+            b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n'
+            b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"content":"<think>raw tags</think> visible"},"finish_reason":null}]}\n\n'
+            b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n'
+            b"data: [DONE]\n\n"
+        )
+        parser = IncrementalSseParser()
+        normalizer = OpenAICompatStreamNormalizer("test", thinking_open_tag=None)
+        events = []
+        async for message in parser.parse(_chunks(upstream)):
+            events.extend(normalizer.normalize(message))
+
+        text_deltas = [
+            e for e in events if isinstance(e, ContentBlockDeltaEvent) and isinstance(e.delta, TextDelta)
+        ]
+        combined = "".join(d.delta.text for d in text_deltas)
+        assert "<think>raw tags</think> visible" == combined
+
+        thinking_deltas = [
+            e for e in events if isinstance(e, ContentBlockDeltaEvent) and isinstance(e.delta, ThinkingDelta)
+        ]
+        assert len(thinking_deltas) == 0
+
+
+class TestNormalizerCustomExtractionFields:
+    """Normalizer with custom thinking_extraction_fields."""
+
+    @pytest.mark.asyncio
+    async def test_custom_field_name(self) -> None:
+        upstream = (
+            b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n'
+            b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"thought":"deep reason"},"finish_reason":null}]}\n\n'
+            b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"content":"answer"},"finish_reason":null}]}\n\n'
+            b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n'
+            b"data: [DONE]\n\n"
+        )
+        parser = IncrementalSseParser()
+        normalizer = OpenAICompatStreamNormalizer(
+            "test",
+            thinking_extraction_fields=("thought",),
+        )
+        events = []
+        async for message in parser.parse(_chunks(upstream)):
+            events.extend(normalizer.normalize(message))
+
+        thinking_deltas = [
+            e for e in events if isinstance(e, ContentBlockDeltaEvent) and isinstance(e.delta, ThinkingDelta)
+        ]
+        assert len(thinking_deltas) > 0
+        assert thinking_deltas[0].delta.thinking == "deep reason"
+
+    @pytest.mark.asyncio
+    async def test_empty_extraction_fields_skips_reasoning(self) -> None:
+        upstream = (
+            b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n'
+            b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"reasoning_content":"ignored","content":"text"},"finish_reason":null}]}\n\n'
+            b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n'
+            b"data: [DONE]\n\n"
+        )
+        parser = IncrementalSseParser()
+        normalizer = OpenAICompatStreamNormalizer("test", thinking_extraction_fields=())
+        events = []
+        async for message in parser.parse(_chunks(upstream)):
+            events.extend(normalizer.normalize(message))
+
+        thinking_deltas = [
+            e for e in events if isinstance(e, ContentBlockDeltaEvent) and isinstance(e.delta, ThinkingDelta)
+        ]
+        assert len(thinking_deltas) == 0
+
+
+class TestNormalizerCustomFinishReasonMap:
+    """Normalizer with custom finish_reason_map."""
+
+    @pytest.mark.asyncio
+    async def test_custom_finish_reason_mapping(self) -> None:
+        upstream = (
+            b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n'
+            b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}\n\n'
+            b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{},"finish_reason":"eos"}]}\n\n'
+            b"data: [DONE]\n\n"
+        )
+        parser = IncrementalSseParser()
+        normalizer = OpenAICompatStreamNormalizer(
+            "test",
+            finish_reason_map={"eos": "end_turn", "max": "max_tokens"},
+        )
+        events = []
+        async for message in parser.parse(_chunks(upstream)):
+            events.extend(normalizer.normalize(message))
+
+        delta_events = [e for e in events if isinstance(e, MessageDeltaEvent)]
+        assert len(delta_events) == 1
+        assert delta_events[0].stop_reason == "end_turn"
+
+
+class TestNormalizerCustomTagsStream:
+    """Normalizer with custom thinking tags in stream mode."""
+
+    @pytest.mark.asyncio
+    async def test_custom_tags_parsed_in_stream(self) -> None:
+        upstream = (
+            b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n'
+            b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{"content":"<reasoning>plan</reasoning>result"},"finish_reason":null}]}\n\n'
+            b'data: {"id":"c","model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n'
+            b"data: [DONE]\n\n"
+        )
+        parser = IncrementalSseParser()
+        normalizer = OpenAICompatStreamNormalizer(
+            "test",
+            thinking_open_tag="<reasoning>",
+            thinking_close_tag="</reasoning>",
+        )
+        events = []
+        async for message in parser.parse(_chunks(upstream)):
+            events.extend(normalizer.normalize(message))
+
+        thinking_deltas = [
+            e for e in events if isinstance(e, ContentBlockDeltaEvent) and isinstance(e.delta, ThinkingDelta)
+        ]
+        combined_thinking = "".join(d.delta.thinking for d in thinking_deltas)
+        assert combined_thinking == "plan"
+
+        text_deltas = [
+            e for e in events if isinstance(e, ContentBlockDeltaEvent) and isinstance(e.delta, TextDelta)
+        ]
+        combined_text = "".join(d.delta.text for d in text_deltas)
+        assert combined_text == "result"
+
+
+class TestResponseFromOpenaiConfigurable:
+    """_response_from_openai with configurable parameters."""
+
+    def test_custom_extraction_fields(self) -> None:
+        from llm_proxy.infrastructure.providers.openai_compat import _response_from_openai
+
+        data = {
+            "id": "r1",
+            "model": "m",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "answer", "thought": "deep"},
+                "finish_reason": "stop",
+            }],
+        }
+        resp = _response_from_openai(
+            data,
+            thinking_extraction_fields=("thought",),
+        )
+        assert any(isinstance(b, ThinkingBlock) and b.thinking == "deep" for b in resp.content)
+        assert any(isinstance(b, TextBlock) and b.text == "answer" for b in resp.content)
+
+    def test_null_tags_no_parsing(self) -> None:
+        from llm_proxy.infrastructure.providers.openai_compat import _response_from_openai
+
+        data = {
+            "id": "r1",
+            "model": "m",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "<think>raw</think>text"},
+                "finish_reason": "stop",
+            }],
+        }
+        resp = _response_from_openai(data, thinking_open_tag=None)
+        text_blocks = [b for b in resp.content if isinstance(b, TextBlock)]
+        assert len(text_blocks) == 1
+        assert text_blocks[0].text == "<think>raw</think>text"
+
+    def test_custom_finish_reason_map(self) -> None:
+        from llm_proxy.infrastructure.providers.openai_compat import _response_from_openai
+
+        data = {
+            "id": "r1",
+            "model": "m",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "hi"},
+                "finish_reason": "eos",
+            }],
+        }
+        resp = _response_from_openai(data, finish_reason_map={"eos": "end_turn"})
+        assert resp.stop_reason == "end_turn"
+
+    def test_custom_tags_in_response(self) -> None:
+        from llm_proxy.infrastructure.providers.openai_compat import _response_from_openai
+
+        data = {
+            "id": "r1",
+            "model": "m",
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": "before<r>thought</r>after"},
+                "finish_reason": "stop",
+            }],
+        }
+        resp = _response_from_openai(
+            data,
+            thinking_open_tag="<r>",
+            thinking_close_tag="</r>",
+        )
+        assert any(isinstance(b, ThinkingBlock) and b.thinking == "thought" for b in resp.content)
+        assert any(isinstance(b, TextBlock) and b.text == "before" for b in resp.content)
+        assert any(isinstance(b, TextBlock) and b.text == "after" for b in resp.content)
