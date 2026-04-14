@@ -54,6 +54,4 @@ config/claude-proxy.yaml
 
 DECISIONS.md
 TASKS.md
-data/taskmanager.db
-data/taskmanager.db-shm
-data/taskmanager.db-wal
+data/*

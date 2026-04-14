@@ -6,8 +6,8 @@ server:
   debug: false
 
 routing:
-  default_model: qwen/qwen3.6-plus:free
-  fallback_model: qwen/qwen3.6-plus:free
+  default_model: minimaxai/minimax-m2.7
+  fallback_model: minimaxai/minimax-m2.7
 
 bridge:
   compatibility_mode: compat
@@ -60,7 +60,7 @@ providers:
     anthropic_beta: null
 
   nvidia:
-    enabled: false
+    enabled: true
     base_url: https://integrate.api.nvidia.com/v1
     api_key_env: NVIDIA_API_KEY
     connect_timeout_seconds: 10
@@ -71,7 +71,7 @@ providers:
     max_keepalive_connections: 20
 
   gemini:
-    enabled: false
+    enabled: true
     base_url: https://generativelanguage.googleapis.com/v1beta/openai
     api_key_env: GEMINI_API_KEY
     connect_timeout_seconds: 10
@@ -139,3 +139,24 @@ models:
     supports_tools: true
     supports_thinking: true
     thinking_passthrough_mode: full
+
+  minimaxai/minimax-m2.7:
+    provider: nvidia
+    enabled: true
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: true
+    thinking_passthrough_mode: native_only
+
+  gemma-4-31b-it:
+    provider: gemini
+    enabled: true
+    supports_stream: true
+    supports_nonstream: true
+    supports_tools: true
+    supports_thinking: true
+    thinking_passthrough_mode: full
+    thinking_open_tag: "<thought>"
+    thinking_close_tag: "</thought>"
+

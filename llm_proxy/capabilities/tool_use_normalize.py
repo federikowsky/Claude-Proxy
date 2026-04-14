@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from llm_proxy.capabilities.enums import SchemaContractKind
@@ -93,12 +94,12 @@ def normalize_ask_user_question_input(
         normalized_questions.append(_minimal_question(str(item)))
         repairs.append("question_item_coerced")
 
-    out = {k: v for k, v in base.items() if k != "questions"}
+    out = {k: v for k, v in base.items() if k not in ("questions", "answers")}
     out["questions"] = normalized_questions
-    if "answers" in base:
-        out["answers"] = base["answers"]
-    else:
-        out["answers"] = None
+    # answers must be a record (dict) or omitted; null / non-dict → drop it.
+    answers = base.get("answers")
+    if isinstance(answers, dict):
+        out["answers"] = answers
 
     if repairs:
         _logger.debug(
@@ -414,3 +415,63 @@ def apply_schema_contract(
     if record.schema_contract is SchemaContractKind.BASH_SESSION_ID:
         return normalize_bash_session_id_input(tool_input, mode=mode)
     return tool_input, []
+
+
+# ---------------------------------------------------------------------------
+# Generic JSON-Schema-driven repair
+# ---------------------------------------------------------------------------
+
+_SCHEMA_TYPE_ZERO: dict[str, Any] = {
+    "array": [],
+    "object": {},
+    "string": "",
+    "number": 0,
+    "integer": 0,
+    "boolean": False,
+}
+
+
+def repair_from_schema(
+    tool_input: Any,
+    schema: Mapping[str, Any],
+) -> tuple[Any, list[str]]:
+    """Backfill missing *required* properties using JSON Schema defaults or zero-values.
+
+    Designed as a universal fallback for tools not covered by SDK-specific
+    normalizers.  Only touches top-level required properties that are absent
+    or ``None``; never removes or restructures existing data.
+    """
+    if not isinstance(tool_input, dict):
+        return tool_input, []
+
+    properties: Mapping[str, Any] = schema.get("properties", {})
+    required: Sequence[str] = schema.get("required", ())
+
+    if not required or not properties:
+        return tool_input, []
+
+    repairs: list[str] = []
+    patched = dict(tool_input)
+
+    for key in required:
+        prop_schema = properties.get(key)
+        if prop_schema is None:
+            continue
+        current = patched.get(key, _SENTINEL)
+        if current is not _SENTINEL and current is not None:
+            continue
+        # Use explicit default from schema, otherwise zero-value for the declared type.
+        if "default" in prop_schema:
+            patched[key] = prop_schema["default"]
+            repairs.append(f"{key}_defaulted_from_schema")
+        else:
+            prop_type = prop_schema.get("type", "")
+            zero = _SCHEMA_TYPE_ZERO.get(prop_type)
+            if zero is not None:
+                patched[key] = zero if not isinstance(zero, (list, dict)) else type(zero)()
+                repairs.append(f"{key}_zero_filled_{prop_type}")
+
+    return patched, repairs
+
+
+_SENTINEL = object()

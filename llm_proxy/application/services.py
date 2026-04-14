@@ -127,7 +127,10 @@ class MessageService:
             )
             sequenced = self._sequencer.sequence(routed)
         else:
-            repaired = repair_stream_tool_blocks(normalized, policies=self._repair_policies)
+            tool_schemas = {t.name: t.input_schema for t in prepared_request.tools} or None
+            repaired = repair_stream_tool_blocks(
+                normalized, policies=self._repair_policies, tool_schemas=tool_schemas,
+            )
             enforced = self._contract_enforcer.enforce_stream(repaired, model)
             sequenced = self._sequencer.sequence(enforced)
         encoded = self._sse_encoder.encode(sequenced)
