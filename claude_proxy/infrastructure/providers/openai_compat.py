@@ -25,14 +25,17 @@ from claude_proxy.domain.models import (
     ContentBlockStopEvent,
     ErrorEvent,
     InputJsonDelta,
+    Message,
     MessageDeltaEvent,
     MessageStartEvent,
     MessageStopEvent,
     ModelInfo,
     ProviderRequestContext,
-    ProviderWarningEvent,
     TextBlock,
     TextDelta,
+    ToolChoice,
+    ToolDefinition,
+    ToolResultBlock,
     ToolUseBlock,
     Usage,
 )
@@ -103,17 +106,15 @@ class OpenAICompatTranslator:
         return payload
 
     def _convert_message(self, message: Message) -> dict[str, object]:
-        from claude_proxy.domain.models import Message, ToolResultBlock
-
         role = message.role.value
 
         # Tool result messages → OpenAI "tool" role
-        if len(message.content) == 1 and isinstance(message.content[0], ToolResultBlock):
-            block = message.content[0]
-            content_str = block.content if isinstance(block.content, str) else ""
+        first = message.content[0] if message.content else None
+        if len(message.content) == 1 and isinstance(first, ToolResultBlock):
+            content_str = first.content if isinstance(first.content, str) else ""
             return {
                 "role": "tool",
-                "tool_call_id": block.tool_use_id,
+                "tool_call_id": first.tool_use_id,
                 "content": content_str,
             }
 
@@ -143,8 +144,6 @@ class OpenAICompatTranslator:
         return result
 
     def _convert_tool(self, tool: ToolDefinition) -> dict[str, object]:
-        from claude_proxy.domain.models import ToolDefinition
-
         func: dict[str, object] = {"name": tool.name}
         if tool.description is not None:
             func["description"] = tool.description
@@ -152,8 +151,6 @@ class OpenAICompatTranslator:
         return {"type": "function", "function": func}
 
     def _convert_tool_choice(self, choice: ToolChoice) -> object:
-        from claude_proxy.domain.models import ToolChoice
-
         if choice.type == "auto":
             return "auto"
         if choice.type == "any":
