@@ -87,6 +87,8 @@ class ProviderSettings(BaseModel):
     # Anthropic-specific (ignored by other providers)
     anthropic_version: str | None = None
     anthropic_beta: str | None = None
+    custom_headers: dict[str, str] = Field(default_factory=dict)
+    finish_reason_map: dict[str, str] | None = None
 
 
 class ModelSettings(BaseModel):
@@ -99,6 +101,9 @@ class ModelSettings(BaseModel):
     supports_tools: bool = True
     supports_thinking: bool = True
     thinking_passthrough_mode: ThinkingPassthroughMode = ThinkingPassthroughMode.FULL
+    thinking_open_tag: str | None = "<think>"
+    thinking_close_tag: str | None = "</think>"
+    thinking_extraction_fields: tuple[str, ...] = ("reasoning_content", "reasoning")
     unsupported_request_fields: tuple[str, ...] = ()
     # Runtime bridge capability policies — defaults preserve existing behaviour.
     schema_normalization_policy: ActionPolicy = ActionPolicy.ALLOW
@@ -127,6 +132,14 @@ class Settings(BaseModel):
                 raise ValueError(f"model '{model_name}' references unknown provider '{model.provider}'")
             if model.enabled and not self.providers[model.provider].enabled:
                 raise ValueError(f"model '{model_name}' references disabled provider '{model.provider}'")
+        for model_name, model in self.models.items():
+            has_open = model.thinking_open_tag is not None
+            has_close = model.thinking_close_tag is not None
+            if has_open != has_close:
+                raise ValueError(
+                    f"model '{model_name}': thinking_open_tag and thinking_close_tag "
+                    f"must both be set or both be null"
+                )
         return self
 
 

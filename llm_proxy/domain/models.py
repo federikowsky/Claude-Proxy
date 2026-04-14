@@ -121,6 +121,9 @@ class ModelInfo:
     supports_tools: bool
     supports_thinking: bool
     thinking_passthrough_mode: ThinkingPassthroughMode = ThinkingPassthroughMode.FULL
+    thinking_open_tag: str | None = "<think>"
+    thinking_close_tag: str | None = "</think>"
+    thinking_extraction_fields: tuple[str, ...] = ("reasoning_content", "reasoning")
     unsupported_request_fields: tuple[str, ...] = ()
     # ---- Capability / policy fields introduced by the runtime bridge ----
     # Policy for normalising tool input_schema before provider boundary.
