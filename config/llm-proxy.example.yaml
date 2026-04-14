@@ -5,18 +5,43 @@ server:
   request_timeout_seconds: 120
   # Dev: validation detail logs, stream/complete start lines, and HTTP request/response body previews (logger llm_proxy.http_debug).
   debug: false
+  # CORS — enable for browser-based clients (Open WebUI, custom dashboards).
+  # cors:
+  #   enabled: true
+  #   allowed_origins:
+  #     - "http://localhost:3000"
+  #   allowed_methods: ["GET", "POST", "OPTIONS"]
+  #   allowed_headers: ["*"]
+  #   allow_credentials: false
 
 routing:
   default_model: anthropic/claude-sonnet-4
+  # Automatic fallback when primary model fails after all retries.
+  # Set to null to disable. Must reference a configured model.
   fallback_model: anthropic/claude-sonnet-4
 
 bridge:
-  compatibility_mode: transparent
+  compatibility_mode: transparent    # transparent | compat | debug
   emit_usage: true
   # Anthropic/client extension fields accepted by the proxy at ingress.
   # Per-model stripping/adaptation happens later in the request_preparer.
   passthrough_request_fields:
     - output_config
+  # Runtime orchestration control plane (session state machine, event log, tool lifecycle).
+  # runtime_orchestration_enabled: false
+  # runtime_policies:
+  #   user_message_from_idle: executing       # planning | executing
+  #   plan_exit_target: executing             # executing | completing
+  #   user_rejected: planning                 # planning | paused | aborted
+  #   permission_denied: paused               # paused | planning | aborted
+  #   tool_failed: executing                  # executing | failed
+  #   subtask_failed: orchestrating           # orchestrating | failed
+  #   timeout_resolution: failed              # failed | interrupted
+  #   interactive_input_repair: repair        # repair | forward_raw | strict
+  #   text_control_attempt_policy: ignore     # ignore | warn | block
+  # runtime_persistence:
+  #   backend: sqlite                         # sqlite | memory
+  #   sqlite_path: data/llm_proxy_runtime.db
 
 providers:
   openrouter:
@@ -32,6 +57,10 @@ providers:
     app_name: llm-proxy
     app_url: null
     debug_echo_upstream_body: false
+    # Retry on transient errors with exponential backoff.
+    retry_attempts: 2              # 0 = no retries, max 10
+    retry_backoff_base: 1.0        # seconds; delay = base * 2^attempt + jitter
+    retry_on_status: [429, 502, 503, 529]
     # Extra HTTP headers sent with every request to this provider.
     # custom_headers:
     #   X-Custom-Header: "value"
@@ -53,7 +82,7 @@ providers:
     max_connections: 100
     max_keepalive_connections: 20
     anthropic_version: "2023-06-01"
-    anthropic_beta: null
+    anthropic_beta: null           # e.g. "prompt-caching-2024-07-31"
 
   nvidia:
     enabled: false
@@ -96,7 +125,11 @@ models:
     supports_nonstream: true
     supports_tools: true
     supports_thinking: true
-    thinking_passthrough_mode: full
+    thinking_passthrough_mode: full   # full | native_only | off
+    # Alternative names that resolve to this model.
+    # aliases:
+    #   - sonnet
+    #   - claude-sonnet
 
   openai/gpt-4.1-mini:
     provider: openrouter

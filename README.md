@@ -11,8 +11,8 @@ Client (Claude Code, Codex CLI, SDK, curl)
 │  POST /v1/messages             │   Anthropic ingress
 │  POST /v1/chat/completions     │   OpenAI ingress        ──►  OpenRouter
 │  POST /v1/messages/count_tokens│                          ──►  Anthropic
-│  GET  /health                  │                          ──►  OpenAI
-│                                │                          ──►  NVIDIA NIM
+│  GET  /v1/models               │                          ──►  OpenAI
+│  GET  /health                  │                          ──►  NVIDIA NIM
 │                                │                          ──►  Google Gemini
 └────────────────────────────────┘
 ```
@@ -29,18 +29,39 @@ LLM providers speak different wire protocols. Claude Code expects the Anthropic 
 
 ## Features
 
+### Core
 - Dual API surface: Anthropic Messages (`/v1/messages`) and OpenAI Chat Completions (`/v1/chat/completions`)
-- Token counting (`/v1/messages/count_tokens`) and health check (`/health`)
+- Token counting (`/v1/messages/count_tokens`), model listing (`GET /v1/models`), health check (`/health`)
 - Streaming (`stream=true`) and non-streaming (`stream=false`) responses
 - Incremental SSE parsing — no full-response buffering
 - Structured content blocks: `text`, `tool_use`, `tool_result`, `thinking`
 - Full Anthropic event sequence: `message_start` → `content_block_start` → `content_block_delta` → `content_block_stop` → `message_delta` → `message_stop`
-- Usage reporting and stop reason mapping across providers
-- Compatibility modes: `transparent`, `compat`, `debug`
-- Per-model thinking passthrough policy: `full`, `native_only`, `off`
-- Extension field passthrough with per-model stripping
-- Forwarding of `anthropic-beta` and `anthropic-version` headers
-- Optional runtime orchestration control plane (session state machine, event log, tool lifecycle)
+
+### Resilience
+- **Retry with exponential backoff** on transient provider errors (429, 502, 503, 529) — configurable attempts, base delay, and status codes per provider
+- **Automatic model fallback** — when the primary model exhausts retries, the proxy automatically tries `fallback_model`
+- **Retry-After propagation** — provider rate-limit headers are parsed and forwarded to clients
+- **Enhanced health endpoint** — probes each enabled provider and returns per-provider reachable/unreachable status
+
+### Configuration & Routing
+- **Model aliases** — multiple names resolve to the same model (e.g. `sonnet` → `anthropic/claude-sonnet-4`)
+- **Compatibility modes**: `transparent`, `compat`, `debug`
+- **Per-model thinking passthrough**: `full`, `native_only`, `off` with configurable think tags and extraction fields
+- **Per-model field stripping** — unsupported fields removed before upstream call
+- **Per-provider custom headers**, finish reason mapping, and Anthropic-specific settings
+- **Extension field passthrough** with `passthrough_request_fields`
+
+### Operations
+- **CORS** — configurable origin/method/header allowlists, disabled by default
+- **Request logging middleware** — structured JSON logs for `/v1/` and `/messages` paths (method, path, status, latency)
+- **Usage reporting** and stop reason mapping across providers
+- **Environment variable overrides** — any config value overridable via `LLM_PROXY__` prefix
+
+### Runtime Orchestration (optional)
+- Session state machine with event log and tool lifecycle control
+- Configurable policies for user interaction, permission, tool failure, and text control
+- SQLite or in-memory persistence backend
+- REST control plane for session management
 
 ## Supported Providers
 
@@ -52,7 +73,7 @@ LLM providers speak different wire protocols. Claude Code expects the Anthropic 
 | **NVIDIA NIM** | `OpenAICompatProvider` | Bearer | OpenAI Chat Completions | Probe (max_tokens=1) |
 | **Google Gemini** | `OpenAICompatProvider` | Bearer | OpenAI Chat Completions | Probe (max_tokens=1) |
 
-Adding a new OpenAI-compatible provider requires only a config block and a builder entry — no new adapter code.
+Adding a new OpenAI-compatible provider requires only a config block and a builder entry in `providers/__init__.py` — no new adapter code.
 
 ## Requirements
 
@@ -90,54 +111,32 @@ export OPENAI_API_KEY=any  # Not checked by the proxy
 # Codex CLI now routes through the proxy
 ```
 
-### Use with Codex CLI
-
-```bash
-export OPENAI_BASE_URL=http://127.0.0.1:8082/v1
-export OPENAI_API_KEY=any  # Not checked by the proxy
-# Codex CLI now routes through the proxy
-```
-
 ### Verify
 
 ```bash
+# Health check with provider status
 curl http://127.0.0.1:8082/health
-# {"status":"ok"}
+# {"status":"ok","providers":{"openrouter":"reachable"}}
+
+# List enabled models
+curl http://127.0.0.1:8082/v1/models
 ```
 
 ## Configuration
 
-Configuration is loaded from:
+Configuration is loaded from `config/llm-proxy.yaml` (or the path in `LLM_PROXY_CONFIG` env var). Any value can be overridden via environment variables with the `LLM_PROXY__` prefix (double underscore as path separator).
 
-1. `config/llm-proxy.yaml` (default path)
-2. Path specified by `LLM_PROXY_CONFIG` environment variable
+For the full configuration reference with all options, defaults, and examples, see **[CONFIGURATION.md](CONFIGURATION.md)**.
 
-Any value can be overridden via environment variables with the `LLM_PROXY__` prefix:
-
-```bash
-export LLM_PROXY__SERVER__PORT=9000
-export LLM_PROXY__BRIDGE__COMPATIBILITY_MODE=compat
-```
-
-### Reference
+### Minimal Example
 
 ```yaml
 server:
   host: 127.0.0.1
   port: 8082
-  log_level: info                # debug | info | warning | error
-  request_timeout_seconds: 120
-  debug: false                   # enables HTTP request/response preview logging
 
 routing:
   default_model: anthropic/claude-sonnet-4
-  fallback_model: anthropic/claude-sonnet-4
-
-bridge:
-  compatibility_mode: transparent  # transparent | compat | debug
-  emit_usage: true
-  passthrough_request_fields:      # extension fields accepted at ingress
-    - output_config
 
 providers:
   openrouter:
@@ -151,73 +150,13 @@ providers:
     max_connections: 100
     max_keepalive_connections: 20
 
-  anthropic:
-    enabled: false
-    base_url: https://api.anthropic.com/v1
-    api_key_env: ANTHROPIC_API_KEY
-    anthropic_version: "2023-06-01"
-    anthropic_beta: null           # e.g. "prompt-caching-2024-07-31"
-
-  nvidia:
-    enabled: false
-    base_url: https://integrate.api.nvidia.com/v1
-    api_key_env: NVIDIA_API_KEY
-
-  openai:
-    enabled: false
-    base_url: https://api.openai.com/v1
-    api_key_env: OPENAI_API_KEY
-
-  openai:
-    enabled: false
-    base_url: https://api.openai.com/v1
-    api_key_env: OPENAI_API_KEY
-
-  gemini:
-    enabled: false
-    base_url: https://generativelanguage.googleapis.com/v1beta/openai
-    api_key_env: GEMINI_API_KEY
-
 models:
   anthropic/claude-sonnet-4:
     provider: openrouter
     enabled: true
-    supports_stream: true
-    supports_nonstream: true
-    supports_tools: true
-    supports_thinking: true
-    thinking_passthrough_mode: full    # full | native_only | off
-
-  nvidia/llama-3.3-nemotron-super-49b-v1:
-    provider: nvidia
-    enabled: false
-    supports_stream: true
-    supports_nonstream: true
-    supports_tools: true
-    supports_thinking: false
-    thinking_passthrough_mode: off
-
-  gemini-2.5-flash:
-    provider: gemini
-    enabled: false
-    supports_stream: true
-    supports_nonstream: true
-    supports_tools: true
-    supports_thinking: false
-    thinking_passthrough_mode: off
 ```
 
-### Key Configuration Concepts
-
-| Section | Purpose |
-|---|---|
-| `server` | Bind address, port, log level, debug toggle |
-| `routing` | Default and fallback model selection |
-| `bridge.compatibility_mode` | Output conservativeness: `transparent` preserves all safe structures, `compat` suppresses non-standard fields, `debug` adds verbose logging |
-| `bridge.passthrough_request_fields` | Top-level extension fields the proxy accepts at ingress |
-| `providers.<name>` | Upstream connection: base URL, API key env var, timeouts, connection pool |
-| `models.<name>.thinking_passthrough_mode` | Per-model thinking egress policy |
-| `models.<name>.unsupported_request_fields` | Fields stripped before the upstream call for that model |
+All other fields use sensible defaults. See [CONFIGURATION.md](CONFIGURATION.md) for the complete reference.
 
 ## API Endpoints
 
@@ -225,7 +164,8 @@ models:
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/health` | Health check |
+| `GET` | `/health` | Health check with per-provider status |
+| `GET` | `/v1/models` | List enabled models (OpenAI-compatible format) |
 | `POST` | `/v1/messages` | Anthropic Messages endpoint (stream and non-stream) |
 | `POST` | `/v1/chat/completions` | OpenAI Chat Completions endpoint (stream and non-stream) |
 | `POST` | `/v1/messages/count_tokens` | Token counting (Anthropic format) |
@@ -255,10 +195,16 @@ The codebase follows **Ports and Adapters** (hexagonal architecture):
 
 ```
 llm_proxy/
-├── api/             HTTP layer — FastAPI routes, request/response schemas
-├── application/     Orchestration — request flow, compatibility, SSE encoding
+├── api/             HTTP layer — FastAPI routes, middleware, error handlers
+│   ├── routes/      Endpoint routers (messages, chat_completions, models, health, runtime)
+│   ├── middleware.py Request logging middleware
+│   └── errors.py    Error handlers with Retry-After propagation
+├── application/     Orchestration — request flow, retry, fallback, SSE encoding
 ├── domain/          Canonical models, enums, errors, abstract ports
-├── infrastructure/  Config, HTTP client, provider adapters
+├── infrastructure/  Config, HTTP client, provider adapters, retry logic
+│   ├── providers/   OpenRouter, Anthropic, OpenAI-compat adapters
+│   ├── config.py    Pydantic settings with validation
+│   └── retry.py     Exponential backoff with jitter
 ├── capabilities/    Tool classification and capability registry
 └── runtime/         Session state machine, event log, persistence
 ```
@@ -266,16 +212,19 @@ llm_proxy/
 ### Request Flow
 
 ```
-1. FastAPI validates the request (Anthropic or OpenAI schema) → ChatRequest
-2. Service resolves the target model
-3. RequestPreparer strips unsupported fields per model config
-4. Service runs model-dependent validations
-5. Provider adapter translates to upstream format and sends the request
-6. Response is normalized back to canonical domain events
-7. Protocol-specific encoder produces the output (Anthropic JSON/SSE or OpenAI JSON/SSE)
+1. CORS middleware (if enabled) handles preflight
+2. Request logging middleware captures method/path/status/latency
+3. FastAPI validates the request (Anthropic or OpenAI schema) → ChatRequest
+4. Service resolves the target model (including alias resolution)
+5. RequestPreparer strips unsupported fields per model config
+6. Provider adapter translates to upstream format and sends the request
+   └─ with_retry wraps the call: exponential backoff on transient errors
+7. If primary fails after all retries → automatic fallback to fallback_model
+8. Response is normalized back to canonical domain events
+9. Protocol-specific encoder produces the output (Anthropic or OpenAI JSON/SSE)
 ```
 
-Each provider implements the `ModelProvider` protocol (`stream`, `complete`, `count_tokens`) with a dedicated translator and stream normalizer. The SSE sequencer guarantees at most one content block open at any time.
+Each provider implements the `ModelProvider` protocol (`stream`, `complete`, `count_tokens`) with a dedicated translator and stream normalizer.
 
 ## Running
 
@@ -310,7 +259,7 @@ pip install -e '.[dev]'
 pytest -q
 ```
 
-312 tests covering:
+445 tests covering:
 
 - API schema validation
 - Request preparation and model-aware field stripping
@@ -320,6 +269,13 @@ pytest -q
 - Provider integration (stream, complete, count_tokens, auth, error mapping)
 - Golden SSE fixtures
 - Runtime orchestration and state machine transitions
+- Retry logic and exponential backoff
+- Automatic model fallback
+- CORS configuration
+- Rate-limit header propagation
+- Request logging middleware
+- Enhanced health endpoint
+- Model listing and alias resolution
 - End-to-end flows
 
 ### Linting
@@ -334,3 +290,4 @@ mypy llm_proxy/ --ignore-missing-imports
 - **`count_tokens` on non-Anthropic providers**: OpenRouter, NVIDIA NIM, and Gemini lack a native token counting endpoint. The proxy uses a minimal completion probe (`max_tokens=1`) to extract `prompt_tokens`. This incurs a round-trip and may result in minimal billing.
 - **Extended thinking with probe-based counting**: When the client request includes thinking config, the probe-based token count is a best-effort estimate and may diverge from Anthropic's native `count_tokens`.
 - **Single process**: The proxy uses a single shared `httpx.AsyncClient` per process. For horizontal scaling, run multiple instances behind a load balancer.
+- **Retry on streaming**: Retry wraps the stream setup (HTTP connection), not individual chunks. Once streaming has begun and chunks are flowing, there is no retry — partial streams cannot be replayed.
