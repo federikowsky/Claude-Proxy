@@ -38,6 +38,9 @@ def effective_runtime_session_id(
         return sid.strip()
     if header_session_id and header_session_id.strip():
         return header_session_id.strip()
+    legacy_sid = md.get("session_id")
+    if isinstance(legacy_sid, str) and legacy_sid.strip():
+        return legacy_sid.strip()
     return uuid.uuid4().hex
 
 

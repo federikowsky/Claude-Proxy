@@ -39,7 +39,7 @@ class ModelResolver(Protocol):
 
 
 class ResponseNormalizer(Protocol):
-    async def normalize_stream(
+    def normalize_stream(
         self,
         request: ChatRequest,
         model: ModelInfo,
@@ -57,7 +57,9 @@ class ResponseNormalizer(Protocol):
 
 
 class SseEncoder(Protocol):
-    async def encode(self, events: AsyncIterator[CanonicalEvent]) -> AsyncIterator[bytes]: ...
+    def encode(self, events: AsyncIterator[CanonicalEvent]) -> AsyncIterator[bytes]: ...
+
+    def format_bridge_error_sse(self, err: Exception) -> bytes: ...
 
 
 class ResponseEncoder(Protocol):

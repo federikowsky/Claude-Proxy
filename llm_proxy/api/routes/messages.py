@@ -19,6 +19,9 @@ def _provider_request_context(request: Request) -> ProviderRequestContext:
     version = request.headers.get("anthropic-version")
     if version:
         headers.append(("anthropic-version", version))
+    runtime_sid = request.headers.get("x-llm-proxy-runtime-session")
+    if runtime_sid:
+        headers.append(("x-llm-proxy-runtime-session", runtime_sid))
     return ProviderRequestContext(
         headers=tuple(headers),
         query_params=tuple(request.query_params.multi_items()),

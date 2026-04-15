@@ -237,13 +237,94 @@ def _make_service(*, fallback_model: str | None = None, fail_primary: bool = Tru
     return service, primary_provider, fallback_provider
 
 
-def _chat_request(model: str = "primary/model", *, stream: bool = True):
+def _make_service_with_stream_events(*, fallback_model: str | None = None, primary_events: tuple[object, ...]):
+    """Create MessageService whose stream path surfaces canonical events for semantic-loop tests."""
+    from llm_proxy.application.services import MessageService
+    from llm_proxy.domain.models import ModelInfo
+    from llm_proxy.domain.enums import CompatibilityMode, ThinkingPassthroughMode
+
+    primary_model = ModelInfo(
+        name="primary/model",
+        provider="primary_provider",
+        enabled=True,
+        supports_stream=True,
+        supports_nonstream=True,
+        supports_tools=True,
+        supports_thinking=True,
+        thinking_passthrough_mode=ThinkingPassthroughMode.FULL,
+    )
+    fallback_model_info = ModelInfo(
+        name="fallback/model",
+        provider="fallback_provider",
+        enabled=True,
+        supports_stream=True,
+        supports_nonstream=True,
+        supports_tools=True,
+        supports_thinking=True,
+        thinking_passthrough_mode=ThinkingPassthroughMode.FULL,
+    )
+
+    resolver = MagicMock()
+    resolver.resolve = MagicMock(side_effect=lambda model_name: primary_model if model_name == "primary/model" else fallback_model_info)
+
+    primary_provider = AsyncMock()
+    fallback_provider = AsyncMock()
+
+    async def upstream_bytes():
+        yield b"data: upstream\n\n"
+
+    primary_provider.stream = AsyncMock(return_value=upstream_bytes())
+    fallback_provider.stream = AsyncMock(return_value=upstream_bytes())
+    primary_provider.complete = AsyncMock(return_value=MagicMock())
+    fallback_provider.complete = AsyncMock(return_value=MagicMock())
+
+    preparer = MagicMock()
+    preparer.prepare = MagicMock(side_effect=lambda req, model: req)
+
+    async def primary_norm_stream_iter():
+        for ev in primary_events:
+            yield ev
+
+    normalizer = MagicMock()
+    normalizer.normalize_stream = MagicMock(side_effect=lambda *args, **kwargs: primary_norm_stream_iter())
+    normalizer.normalize_response = MagicMock(return_value=MagicMock(content=()))
+
+    sequencer = MagicMock()
+    sequencer.sequence = MagicMock(side_effect=lambda events: events)
+
+    sse_encoder = MagicMock()
+
+    async def enc_iter():
+        yield b"data: test\n\n"
+
+    sse_encoder.encode = MagicMock(return_value=enc_iter())
+    response_encoder = MagicMock()
+    response_encoder.encode = MagicMock(return_value={"type": "message"})
+
+    service = MessageService(
+        resolver=resolver,
+        providers={
+            "primary_provider": primary_provider,
+            "fallback_provider": fallback_provider,
+        },
+        request_preparer=preparer,
+        normalizer=normalizer,
+        sequencer=sequencer,
+        sse_encoder=sse_encoder,
+        response_encoder=response_encoder,
+        compatibility_mode=CompatibilityMode.TRANSPARENT,
+        fallback_model=fallback_model,
+    )
+    return service, primary_provider, fallback_provider
+
+
+def _chat_request(model: str = "primary/model", *, stream: bool = True, metadata=None):
     from llm_proxy.domain.models import ChatRequest, Message, Role
     return ChatRequest(
         model=model,
         messages=(Message(role=Role.USER, content="hello"),),
         system=None,
-        metadata=None,
+        metadata=metadata,
         temperature=None,
         top_p=None,
         max_tokens=1024,
@@ -315,3 +396,30 @@ async def test_fallback_complete_path():
     result = await service.complete(_chat_request(stream=False))
     assert result is not None
     fallback.complete.assert_called_once()
+
+
+@pytest.mark.anyio
+async def test_semantic_loop_triggers_fallback_on_third_identical_stream_request():
+    """Repeated identical first tool action in same session triggers fallback before long retry loops."""
+    from llm_proxy.domain.models import ContentBlockStartEvent, ToolUseBlock
+
+    repeated_tool = ContentBlockStartEvent(
+        index=0,
+        block=ToolUseBlock(
+            id="toolu_1",
+            name="Agent",
+            input={"subagent_type": "Explore", "description": "same", "prompt": "same"},
+        ),
+    )
+    service, primary, fallback = _make_service_with_stream_events(
+        fallback_model="fallback/model",
+        primary_events=(repeated_tool,),
+    )
+    request = _chat_request(metadata={"session_id": "sess-loop-1"})
+
+    await service.stream(request)
+    await service.stream(request)
+    await service.stream(request)
+
+    assert primary.stream.call_count == 3
+    assert fallback.stream.call_count == 1

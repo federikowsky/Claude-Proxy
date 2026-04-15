@@ -85,6 +85,11 @@ class UpstreamTimeoutError(BridgeError):
     error_type = "upstream_timeout"
 
 
+class SemanticLoopDetectedError(BridgeError):
+    status_code = 422
+    error_type = "semantic_loop_detected"
+
+
 class InternalBridgeError(BridgeError):
     status_code = 500
     error_type = "internal_bridge_error"
