@@ -44,6 +44,12 @@ def build_provider_registry(
             translator=OpenAICompatTranslator("openai"),
             provider_name="openai",
         ),
+        "modal_research": lambda provider_settings: OpenAICompatProvider(
+            settings=provider_settings,
+            client_manager=client_manager,
+            translator=OpenAICompatTranslator("modal_research"),
+            provider_name="modal_research",
+        ),
     }
     providers: dict[str, ModelProvider] = {}
     for provider_name, provider_settings in settings.providers.items():

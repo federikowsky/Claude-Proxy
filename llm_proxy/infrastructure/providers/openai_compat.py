@@ -41,6 +41,7 @@ from llm_proxy.domain.models import (
     ToolUseBlock,
     Usage,
 )
+from llm_proxy.domain.serialization import thinking_config_to_payload
 from llm_proxy.infrastructure.config import ProviderSettings
 from llm_proxy.infrastructure.http import SharedAsyncClientManager
 from llm_proxy.infrastructure.providers.sse import IncrementalSseParser, SseMessage
@@ -105,6 +106,10 @@ class OpenAICompatTranslator:
             payload["tools"] = [self._convert_tool(tool) for tool in request.tools]
         if request.tool_choice is not None:
             payload["tool_choice"] = self._convert_tool_choice(request.tool_choice)
+        # Z.AI GLM-style OpenAI-compatible APIs accept `thinking: {type: enabled|disabled}`.
+        # Other OpenAI-compat hosts may reject unknown keys, so scope to Modal Research only.
+        if request.thinking is not None and self._provider_name == "modal_research":
+            payload["thinking"] = thinking_config_to_payload(request.thinking)
         return payload
 
     def _convert_message(self, message: Message) -> dict[str, object]:
@@ -562,6 +567,7 @@ class OpenAICompatProvider:
         probe_payload["stream"] = False
         probe_payload["max_tokens"] = 1
         probe_payload.pop("stream_options", None)
+        probe_payload.pop("thinking", None)
         try:
             response = await client.request(
                 "POST",
