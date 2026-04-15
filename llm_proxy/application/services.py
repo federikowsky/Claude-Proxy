@@ -164,8 +164,15 @@ class MessageService:
         except (ProviderHttpError, SemanticLoopDetectedError, UpstreamTimeoutError) as exc:
             if self._fallback_model and request.model != self._fallback_model:
                 _logger.warning(
-                    "primary model=%s failed, trying fallback=%s: %s",
-                    request.model, self._fallback_model, exc.message,
+                    "model_fallback_triggered",
+                    extra={
+                        "extra_fields": {
+                            "primary_model": request.model,
+                            "fallback_model": self._fallback_model,
+                            "reason": exc.message,
+                            "error_type": getattr(exc, "error_type", type(exc).__name__),
+                        },
+                    },
                 )
                 fallback_request = replace(request, model=self._fallback_model)
                 return await self._stream_impl(fallback_request, provider_context)
@@ -250,8 +257,15 @@ class MessageService:
         except (ProviderHttpError, SemanticLoopDetectedError, UpstreamTimeoutError) as exc:
             if self._fallback_model and request.model != self._fallback_model:
                 _logger.warning(
-                    "primary model=%s failed, trying fallback=%s: %s",
-                    request.model, self._fallback_model, exc.message,
+                    "model_fallback_triggered",
+                    extra={
+                        "extra_fields": {
+                            "primary_model": request.model,
+                            "fallback_model": self._fallback_model,
+                            "reason": exc.message,
+                            "error_type": getattr(exc, "error_type", type(exc).__name__),
+                        },
+                    },
                 )
                 fallback_request = replace(request, model=self._fallback_model)
                 return await self._complete_impl(fallback_request, provider_context)

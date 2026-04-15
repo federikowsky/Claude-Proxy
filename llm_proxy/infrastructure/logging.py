@@ -1,22 +1,34 @@
 from __future__ import annotations
 
+import logging
 import sys
-from contextvars import ContextVar
 
 import structlog
 
+_NOISY_LOGGERS: dict[str, int] = {
+    "httpx": logging.WARNING,
+    "httpcore": logging.WARNING,
+    "uvicorn.access": logging.WARNING,
+}
 
-# Context variables bound per-request (automatically added to every log entry).
-_context_vars: list[ContextVar] = [
-    ContextVar("request_id", default=None),
-    ContextVar("session_id", default=None),
-]
+
+def _merge_extra_fields(
+    _logger: logging.Logger,
+    _method_name: str,
+    event_dict: dict[str, object],
+) -> dict[str, object]:
+    extra = event_dict.pop("extra_fields", None)
+    if isinstance(extra, dict):
+        event_dict.update(extra)
+    return event_dict
 
 
 def setup_logging(level: str = "INFO", pretty: bool = False) -> None:
-    """Configure structlog: JSON in production, pretty in development."""
-    processors = [
+    """Configure one structured formatter for both stdlib logging and structlog."""
+    shared_processors = [
         structlog.contextvars.merge_contextvars,
+        structlog.stdlib.ExtraAdder(),
+        _merge_extra_fields,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.PositionalArgumentsFormatter(),
@@ -25,26 +37,44 @@ def setup_logging(level: str = "INFO", pretty: bool = False) -> None:
         structlog.processors.UnicodeDecoder(),
     ]
 
-    if pretty:
-        processors.append(structlog.dev.ConsoleRenderer())
-    else:
-        processors.append(
-            structlog.processors.JSONRenderer(serializer=__json_dumps)
-        )
+    renderer = (
+        structlog.dev.ConsoleRenderer()
+        if pretty
+        else structlog.processors.JSONRenderer(serializer=__json_dumps)
+    )
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processor=renderer,
+        foreign_pre_chain=shared_processors,
+    )
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(formatter)
 
     structlog.configure(
-        processors=processors,
+        processors=[*shared_processors, structlog.stdlib.ProcessorFormatter.wrap_for_formatter],
         wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
+        logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
 
-    # Cap root stdlib loggers at configured level.
-    import logging
     root = logging.getLogger()
-    root.setLevel(level.upper())
     root.handlers.clear()
+    root.addHandler(handler)
+    root.setLevel(level.upper())
+
+    for logger_name, logger_level in _NOISY_LOGGERS.items():
+        logging.getLogger(logger_name).setLevel(logger_level)
+
+
+def bind_log_context(*, request_id: str, session_id: str | None = None) -> None:
+    values: dict[str, object] = {"request_id": request_id}
+    if session_id:
+        values["session_id"] = session_id
+    structlog.contextvars.bind_contextvars(**values)
+
+
+def clear_log_context() -> None:
+    structlog.contextvars.clear_contextvars()
 
 
 def __json_dumps(obj, default, **kw):

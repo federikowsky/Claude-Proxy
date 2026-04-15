@@ -44,8 +44,17 @@ async def with_retry(
             if attempt < attempts - 1:
                 delay = _backoff_delay(attempt, settings.retry_backoff_base, exc)
                 _logger.warning(
-                    "retry %s attempt=%d/%d status=%d delay=%.1fs",
-                    operation, attempt + 1, settings.retry_attempts, upstream_status, delay,
+                    "provider_retry",
+                    extra={
+                        "extra_fields": {
+                            "operation": operation,
+                            "attempt": attempt + 1,
+                            "max_retries": settings.retry_attempts,
+                            "upstream_status": upstream_status,
+                            "delay_s": round(delay, 1),
+                            "reason": "upstream_http_error",
+                        },
+                    },
                 )
                 await asyncio.sleep(delay)
         except UpstreamTimeoutError as exc:
@@ -53,8 +62,16 @@ async def with_retry(
             if attempt < attempts - 1:
                 delay = _backoff_delay(attempt, settings.retry_backoff_base)
                 _logger.warning(
-                    "retry %s attempt=%d/%d timeout delay=%.1fs",
-                    operation, attempt + 1, settings.retry_attempts, delay,
+                    "provider_retry",
+                    extra={
+                        "extra_fields": {
+                            "operation": operation,
+                            "attempt": attempt + 1,
+                            "max_retries": settings.retry_attempts,
+                            "delay_s": round(delay, 1),
+                            "reason": "upstream_timeout",
+                        },
+                    },
                 )
                 await asyncio.sleep(delay)
 

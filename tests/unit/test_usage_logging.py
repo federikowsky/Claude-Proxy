@@ -47,7 +47,7 @@ async def test_logs_api_routes(app, caplog):
         with caplog.at_level(logging.INFO, logger="llm_proxy.access"):
             await client.get("/v1/models")
 
-    assert any("request" in r.message and "/v1/models" in str(r.__dict__) for r in caplog.records)
+    assert any("request_completed" in r.message and "/v1/models" in str(r.__dict__) for r in caplog.records)
 
 
 @pytest.mark.anyio
