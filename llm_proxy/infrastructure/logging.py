@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 
 import structlog
@@ -23,7 +24,27 @@ def _merge_extra_fields(
     return event_dict
 
 
-def setup_logging(level: str = "INFO", pretty: bool = False) -> None:
+def _stderr_supports_color() -> bool:
+    isatty = getattr(sys.stderr, "isatty", None)
+    if not callable(isatty) or not isatty():
+        return False
+    term = os.environ.get("TERM", "")
+    return bool(term and term.lower() != "dumb")
+
+
+def _should_use_pretty_logging(pretty: bool | None) -> bool:
+    if pretty is not None:
+        return pretty
+    if os.environ.get("NO_COLOR"):
+        return False
+    if os.environ.get("FORCE_COLOR") not in (None, "", "0"):
+        return True
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
+    return _stderr_supports_color()
+
+
+def setup_logging(level: str = "INFO", pretty: bool | None = None) -> None:
     """Configure one structured formatter for both stdlib logging and structlog."""
     shared_processors = [
         structlog.contextvars.merge_contextvars,
@@ -37,9 +58,10 @@ def setup_logging(level: str = "INFO", pretty: bool = False) -> None:
         structlog.processors.UnicodeDecoder(),
     ]
 
+    pretty_enabled = _should_use_pretty_logging(pretty)
     renderer = (
-        structlog.dev.ConsoleRenderer()
-        if pretty
+        structlog.dev.ConsoleRenderer(colors=True, sort_keys=False, pad_event_to=24)
+        if pretty_enabled
         else structlog.processors.JSONRenderer(serializer=__json_dumps)
     )
     formatter = structlog.stdlib.ProcessorFormatter(
